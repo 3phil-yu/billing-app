@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">BillingApp</string>
+    <string name="title_activity_main">BillingApp</string>
+    <string name="package_name">com.billing.app</string>
+    <string name="custom_url_scheme">com.billing.app</string>
+</resources>
