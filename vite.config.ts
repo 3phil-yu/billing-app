@@ -4,7 +4,7 @@ import { VitePWA } from 'vite-plugin-pwa'
 
 // https://vite.dev/config/
 export default defineConfig({
-  base: process.env.NODE_ENV === 'production' ? '/billing-app/' : '/',
+  base: '/',
   plugins: [
     react(),
     VitePWA({
@@ -47,8 +47,8 @@ export default defineConfig({
         background_color: '#0f172a',
         display: 'standalone',
         orientation: 'portrait',
-        scope: '/billing-app/',
-        start_url: '/billing-app/',
+        scope: '/',
+        start_url: '/',
         categories: ['business', 'finance', 'productivity'],
         lang: 'zh-CN',
         icons: [
@@ -82,14 +82,14 @@ export default defineConfig({
             name: '快速开单',
             short_name: '开单',
             description: '立即创建新订单',
-            url: '/billing-app/billing',
+            url: '/billing',
             icons: [{ src: 'icon-192.png', sizes: '192x192' }]
           },
           {
             name: '查看控制台',
             short_name: '控制台',
             description: '查看销售统计',
-            url: '/billing-app/',
+            url: '/',
             icons: [{ src: 'icon-192.png', sizes: '192x192' }]
           }
         ]
