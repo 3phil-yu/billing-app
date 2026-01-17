@@ -4,12 +4,15 @@ import { LayoutDashboard, Users, Receipt, Settings, Sparkles } from 'lucide-reac
 export default function Layout() {
     const location = useLocation();
     const menuItems = [
-        { path: '/', label: '控制台', icon: LayoutDashboard },
+        { path: '/', label: '对账单', icon: LayoutDashboard },
         { path: '/billing', label: '智能开单', icon: Receipt },
         { path: '/customers', label: '客户管理', icon: Users },
         { path: '/analysis', label: '需求分析', icon: Sparkles },
         { path: '/settings', label: '系统设置', icon: Settings },
     ];
+
+    // 检查是否为开单页面
+    const isBillingPage = location.pathname === '/billing';
 
     return (
         <div style={{
@@ -19,47 +22,49 @@ export default function Layout() {
             flexDirection: 'column',
             fontFamily: 'Inter, system-ui, -apple-system, sans-serif'
         }}>
-            {/* 顶部导航栏 - 移动端 */}
-            <header style={{
-                padding: '1rem 1rem',
-                background: 'linear-gradient(to right, #1e1b4b, #4c1d95)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                position: 'sticky',
-                top: 0,
-                zIndex: 30,
-                boxShadow: '0 2px 10px rgba(0, 0, 0, 0.2)'
-            }}>
-                <div style={{
+            {/* 顶部导航栏 - 移动端 (仅在非开单页面显示) */}
+            {!isBillingPage && (
+                <header style={{
+                    padding: '1rem 1rem',
+                    background: 'linear-gradient(to right, #1e1b4b, #4c1d95)',
                     display: 'flex',
                     alignItems: 'center',
-                    gap: '0.75rem'
+                    justifyContent: 'space-between',
+                    position: 'sticky',
+                    top: 0,
+                    zIndex: 30,
+                    boxShadow: '0 2px 10px rgba(0, 0, 0, 0.2)'
                 }}>
                     <div style={{
-                        width: '2.5rem',
-                        height: '2.5rem',
-                        background: 'linear-gradient(135deg, #6366f1, #a855f7)',
-                        borderRadius: '0.75rem',
                         display: 'flex',
                         alignItems: 'center',
-                        justifyContent: 'center',
-                        boxShadow: '0 4px 12px rgba(99, 102, 241, 0.3)'
+                        gap: '0.75rem'
                     }}>
-                        <Receipt size={20} style={{ color: 'white' }} />
-                    </div>
-                    <h1 style={{
-                        fontSize: '1.25rem',
+                        <div style={{
+                            width: '2.5rem',
+                            height: '2.5rem',
+                            background: 'linear-gradient(135deg, #6366f1, #a855f7)',
+                            borderRadius: '0.75rem',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            boxShadow: '0 4px 12px rgba(99, 102, 241, 0.3)'
+                        }}>
+                            <Receipt size={20} style={{ color: 'white' }} />
+                        </div>
+                        <h1 style={{
+                        fontSize: '1.1rem',
                         fontWeight: 'bold',
                         background: 'linear-gradient(90deg, #93c5fd, #c4b5fd)',
                         WebkitBackgroundClip: 'text',
                         WebkitTextFillColor: 'transparent'
                     }}>
-                        智能开单系统
+                        智能开单
                     </h1>
-                </div>
-                <div style={{ width: '2.5rem' }} />
-            </header>
+                    </div>
+                    <div style={{ width: '2.5rem' }} />
+                </header>
+            )}
 
             {/* 主内容区域 */}
             <main style={{
@@ -173,7 +178,7 @@ export default function Layout() {
                             WebkitBackgroundClip: 'text',
                             WebkitTextFillColor: 'transparent'
                         }}>
-                            智能开单系统
+                            智能开单
                         </h1>
                     </div>
                 </div>

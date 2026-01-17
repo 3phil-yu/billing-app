@@ -13,7 +13,7 @@ export interface Order {
     items: OrderItem[];
     totalAmount: number;
     customerId?: string; // Optional link to customer
-    status: 'pending' | 'completed' | 'cancelled';
+    status: 'pending' | 'completed' | 'cancelled' | '赊欠' | '已付';
 }
 
 export function useOrders() {
@@ -27,7 +27,7 @@ export function useOrders() {
             items,
             totalAmount,
             customerId,
-            status: 'completed'
+            status: '赊欠'
         };
         setOrders([newOrder, ...orders]);
         return newOrder;
@@ -61,5 +61,12 @@ export function useOrders() {
         };
     };
 
-    return { orders, addOrder, getDailySales };
+    const updateOrderStatus = (orderId: string, status: 'pending' | 'completed' | 'cancelled' | '赊欠' | '已付') => {
+        const updatedOrders = orders.map(order => 
+            order.id === orderId ? { ...order, status } : order
+        );
+        setOrders(updatedOrders);
+    };
+
+    return { orders, addOrder, getDailySales, updateOrderStatus };
 }

@@ -1,252 +1,557 @@
-import { useState } from 'react';
-import { analyzeDemand } from '../services/gemini';
+import { useState, useMemo } from 'react';
+import { Link } from 'react-router-dom';
+import { TrendingUp, FileText, DollarSign, BarChart3, Users, Share2, CheckCircle, XCircle } from 'lucide-react';
 import { useOrders } from '../hooks/useOrders';
 import { useCustomers } from '../hooks/useCustomers';
-import { Send, TrendingUp, Sparkles, AlertCircle, BarChart3, Users, ShoppingCart } from 'lucide-react';
-import { useLocalStorage } from '../hooks/useLocalStorage';
-import LoadingSpinner from '../components/ui/LoadingSpinner';
-import { useToast } from '../components/ui/Toast';
 
-export default function Analysis() {
-    const { orders } = useOrders();
+function Analysis() {
+    const [activeTab, setActiveTab] = useState('debt'); // debt or all
+    const { orders, updateOrderStatus } = useOrders();
     const { customers } = useCustomers();
-    const [apiKey] = useLocalStorage('gemini_api_key', '');
-    const { showToast } = useToast();
 
-    const [query, setQuery] = useState('');
-    const [analysis, setAnalysis] = useState<string>('');
-    const [loading, setLoading] = useState(false);
+    // 从实际订单数据中过滤赊欠订单和全部订单
+    const debtOrders = useMemo(() => {
+        return orders.filter(order => order.status === '赊欠');
+    }, [orders]);
 
-    const suggestions = [
-        "分析最畅销的产品",
-        "预测下周的销售额", 
-        "建议营销策略",
-        "客户消费行为分析",
-        "库存优化建议",
-        "季节性销售趋势"
+    const allOrders = useMemo(() => {
+        return orders;
+    }, [orders]);
+
+    const totalDebt = debtOrders.reduce((sum, order) => sum + order.totalAmount, 0);
+    const oldestDebtDays = 8; // 最长赊欠天数
+    const oldestDebtDate = '2026-01-07'; // 最长赊欠日期
+
+    // 更新订单状态
+    const handleUpdateOrderStatus = (orderId: string, currentStatus: string) => {
+        const newStatus = currentStatus === '赊欠' ? '已付' : '赊欠';
+        updateOrderStatus(orderId, newStatus as '赊欠' | '已付');
+    };
+
+    // 分享订单
+    const shareOrder = (order: any) => {
+        // 模拟分享功能
+        alert('订单分享功能已触发');
+    };
+
+    // 一周趋势数据
+    const weekTrends = [
+        { date: '01-11', orders: 2, amount: 150 },
+        { date: '01-12', orders: 1, amount: 80 },
+        { date: '01-13', orders: 1, amount: 100 },
+        { date: '01-14', orders: 1, amount: 45 },
+        { date: '01-15', orders: 0, amount: 0 },
+        { date: '01-16', orders: 0, amount: 0 },
+        { date: '01-17', orders: 0, amount: 0 }
     ];
 
-    const handleAnalysis = async () => {
-        if (!query.trim()) {
-            showToast({
-                type: 'warning',
-                title: '请输入分析问题'
-            });
-            return;
-        }
-
-        if (!apiKey) {
-            showToast({
-                type: 'error',
-                title: '缺少API密钥',
-                message: '请前往设置页面配置Gemini API密钥'
-            });
-            return;
-        }
-
-        setLoading(true);
-        try {
-            // 准备分析数据
-            const contextData = {
-                totalOrders: orders.length,
-                totalCustomers: customers.length,
-                totalRevenue: orders.reduce((sum, o) => sum + o.totalAmount, 0),
-                recentOrders: orders.slice(0, 50), // 最近50个订单
-                customerSummary: customers.map(c => ({ 
-                    name: c.name, 
-                    totalSpent: c.totalSpent,
-                    lastOrderDate: c.lastOrderDate 
-                })),
-                date: new Date().toLocaleDateString('zh-CN')
-            };
-
-            const result = await analyzeDemand(contextData, query, apiKey);
-            setAnalysis(result);
-            
-            showToast({
-                type: 'success',
-                title: '分析完成',
-                message: 'AI分析结果已生成'
-            });
-        } catch (error) {
-            console.error(error);
-            setAnalysis("生成分析时出错。请检查您的API密钥和网络连接。");
-            
-            showToast({
-                type: 'error',
-                title: '分析失败',
-                message: '请检查API密钥和网络连接'
-            });
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    const handleKeyPress = (e: React.KeyboardEvent) => {
-        if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            handleAnalysis();
-        }
-    };
-
-    // 简单的Markdown渲染
-    const renderMarkdown = (text: string) => {
-        return text.split('\n').map((line, i) => {
-            if (line.startsWith('### ')) {
-                return <h3 key={i} className="text-lg font-semibold mt-6 mb-3 text-card-foreground">{line.replace('### ', '')}</h3>;
-            }
-            if (line.startsWith('## ')) {
-                return <h2 key={i} className="text-xl font-bold mt-8 mb-4 text-card-foreground">{line.replace('## ', '')}</h2>;
-            }
-            if (line.startsWith('# ')) {
-                return <h1 key={i} className="text-2xl font-bold mt-8 mb-6 text-card-foreground">{line.replace('# ', '')}</h1>;
-            }
-            if (line.startsWith('- ') || line.startsWith('* ')) {
-                return <li key={i} className="ml-6 mb-1 text-muted-foreground list-disc">{line.replace(/^[*-] /, '')}</li>;
-            }
-            if (line.startsWith('**') && line.endsWith('**')) {
-                return <p key={i} className="mb-3 font-semibold text-card-foreground">{line.replace(/\*\*/g, '')}</p>;
-            }
-            if (line.trim() === '') {
-                return <br key={i} />;
-            }
-            return <p key={i} className="mb-3 text-muted-foreground leading-relaxed">{line}</p>;
-        });
-    };
-
     return (
-        <div className="min-h-screen bg-background">
-            <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-                {/* 页面头部 */}
-                <div className="mb-8">
-                    <div className="flex items-center gap-3 mb-4">
-                        <div className="p-3 bg-primary/10 rounded-lg">
-                            <Sparkles className="w-6 h-6 text-primary" />
-                        </div>
-                        <div>
-                            <h1 className="text-2xl font-bold text-card-foreground">AI需求分析</h1>
-                            <p className="text-muted-foreground">基于您的业务数据进行智能分析和预测</p>
-                        </div>
-                    </div>
+        <div style={{
+            minHeight: '100vh',
+            background: '#f5f5f5',
+            fontFamily: 'PingFang SC, Helvetica Neue, Arial, sans-serif'
+        }}>
+            {/* 顶部导航栏 */}
+            <div style={{
+                background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                padding: '1.5rem 1rem',
+                position: 'relative',
+                overflow: 'hidden'
+            }}>
+                {/* 装饰元素 */}
+                <div style={{
+                    position: 'absolute',
+                    top: '-50%',
+                    right: '-20%',
+                    width: '200px',
+                    height: '200px',
+                    background: 'rgba(255, 255, 255, 0.1)',
+                    borderRadius: '50%'
+                }} />
+                <div style={{
+                    position: 'absolute',
+                    bottom: '-30%',
+                    left: '-10%',
+                    width: '150px',
+                    height: '150px',
+                    background: 'rgba(255, 255, 255, 0.1)',
+                    borderRadius: '50%'
+                }} />
 
-                    {/* 数据概览 */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                        <div className="bg-card border border-border rounded-lg p-4">
-                            <div className="flex items-center gap-3">
-                                <ShoppingCart className="w-8 h-8 text-blue-500" />
-                                <div>
-                                    <p className="text-sm text-muted-foreground">总订单数</p>
-                                    <p className="text-xl font-bold text-card-foreground">{orders.length}</p>
-                                </div>
-                            </div>
-                        </div>
-                        <div className="bg-card border border-border rounded-lg p-4">
-                            <div className="flex items-center gap-3">
-                                <Users className="w-8 h-8 text-green-500" />
-                                <div>
-                                    <p className="text-sm text-muted-foreground">客户总数</p>
-                                    <p className="text-xl font-bold text-card-foreground">{customers.length}</p>
-                                </div>
-                            </div>
-                        </div>
-                        <div className="bg-card border border-border rounded-lg p-4">
-                            <div className="flex items-center gap-3">
-                                <BarChart3 className="w-8 h-8 text-purple-500" />
-                                <div>
-                                    <p className="text-sm text-muted-foreground">总销售额</p>
-                                    <p className="text-xl font-bold text-card-foreground">
-                                        ¥{orders.reduce((sum, o) => sum + o.totalAmount, 0).toLocaleString()}
-                                    </p>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* API密钥提醒 */}
-                    {!apiKey && (
-                        <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-4 mb-6">
-                            <div className="flex items-center gap-3">
-                                <AlertCircle className="w-5 h-5 text-yellow-500" />
-                                <div>
-                                    <p className="font-medium text-yellow-700">需要配置API密钥</p>
-                                    <p className="text-sm text-yellow-600">请前往设置页面配置Gemini API密钥以使用AI分析功能</p>
-                                </div>
-                            </div>
-                        </div>
-                    )}
+                {/* 标题 */}
+                <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    marginBottom: '1rem',
+                    position: 'relative',
+                    zIndex: 10
+                }}>
+                    <h1 style={{
+                        fontSize: '1.25rem',
+                        fontWeight: 'bold',
+                        color: 'white'
+                    }}>经营分析</h1>
                 </div>
 
-                {/* 分析输入区域 */}
-                <div className="bg-card border border-border rounded-lg p-6 mb-8">
-                    <h2 className="text-lg font-semibold text-card-foreground mb-4">提出您的分析问题</h2>
+                {/* 赊欠信息 */}
+                <div style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    position: 'relative',
+                    zIndex: 10
+                }}>
+                    <div>
+                        <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.5rem',
+                            marginBottom: '0.5rem'
+                        }}>
+                            <p style={{
+                                fontSize: '0.875rem',
+                                color: 'rgba(255, 255, 255, 0.8)'
+                            }}>赊欠金额</p>
+                            <p style={{
+                                fontSize: '0.75rem',
+                                color: 'rgba(255, 255, 255, 0.6)'
+                            }}>最长赊欠至今{oldestDebtDays}天({oldestDebtDate})</p>
+                        </div>
+                        <div style={{
+                            display: 'flex',
+                            alignItems: 'baseline',
+                            gap: '0.5rem'
+                        }}>
+                            <h2 style={{
+                                fontSize: '1.75rem',
+                                fontWeight: 'bold',
+                                color: 'white'
+                            }}>¥{totalDebt}</h2>
+                            <p style={{
+                                fontSize: '0.875rem',
+                                color: 'rgba(255, 255, 255, 0.8)'
+                            }}>/{debtOrders.length}单</p>
+                        </div>
+                    </div>
+                    <button style={{
+                        background: 'rgba(255, 255, 255, 0.2)',
+                        border: 'none',
+                        borderRadius: '0.75rem',
+                        padding: '0.5rem 1rem',
+                        fontSize: '0.875rem',
+                        fontWeight: '500',
+                        color: 'white',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.25rem',
+                        boxShadow: '0 4px 12px rgba(16, 185, 129, 0.2)'
+                    }}>
+                        赊欠对账 →
+                    </button>
+                </div>
+            </div>
+
+            {/* 主体内容 */}
+            <div style={{
+                padding: '1rem',
+                paddingBottom: '8rem'
+            }}>
+                {/* 一周趋势图 */}
+                <div style={{
+                    background: 'white',
+                    borderRadius: '1rem',
+                    padding: '1rem',
+                    marginBottom: '1rem',
+                    boxShadow: '0 2px 10px rgba(0, 0, 0, 0.05)'
+                }}>
+                    <h3 style={{
+                        fontSize: '1rem',
+                        fontWeight: '500',
+                        color: '#374151',
+                        marginBottom: '1rem'
+                    }}>一周趋势</h3>
                     
-                    <div className="space-y-4">
-                        <div className="relative">
-                            <textarea
-                                placeholder="例如：分析最近一周的销售趋势，找出表现最好的产品类别..."
-                                className="w-full h-24 p-4 bg-muted/30 border border-border rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-primary transition-colors"
-                                value={query}
-                                onChange={(e) => setQuery(e.target.value)}
-                                onKeyDown={handleKeyPress}
-                                disabled={!apiKey || loading}
-                            />
-                            <button
-                                onClick={handleAnalysis}
-                                disabled={loading || !apiKey || !query.trim()}
-                                className="absolute bottom-3 right-3 p-2 bg-primary text-white rounded-lg hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                                title="发送分析请求"
-                            >
-                                {loading ? (
-                                    <LoadingSpinner size="sm" />
-                                ) : (
-                                    <Send size={18} />
-                                )}
-                            </button>
-                        </div>
-
-                        {/* 快速建议 */}
-                        <div>
-                            <p className="text-sm text-muted-foreground mb-3">快速建议：</p>
-                            <div className="flex flex-wrap gap-2">
-                                {suggestions.map(suggestion => (
-                                    <button
-                                        key={suggestion}
-                                        onClick={() => setQuery(suggestion)}
-                                        disabled={!apiKey || loading}
-                                        className="px-3 py-2 text-sm bg-muted hover:bg-muted/80 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                                    >
-                                        {suggestion}
-                                    </button>
-                                ))}
+                    <div style={{
+                        display: 'flex',
+                        alignItems: 'end',
+                        justifyContent: 'space-between',
+                        height: '120px',
+                        gap: '0.5rem'
+                    }}>
+                        {weekTrends.map((trend, index) => (
+                            <div key={index} style={{
+                                flex: 1,
+                                display: 'flex',
+                                flexDirection: 'column',
+                                alignItems: 'center',
+                                gap: '0.5rem'
+                            }}>
+                                <div style={{
+                                    width: '100%',
+                                    height: `${(trend.amount / 200) * 100}%`,
+                                    background: 'linear-gradient(180deg, #10b981 0%, #34d399 100%)',
+                                    borderRadius: '0.25rem 0.25rem 0 0',
+                                    position: 'relative'
+                                }}>
+                                    {trend.amount > 0 && (
+                                        <div style={{
+                                            position: 'absolute',
+                                            top: '-20px',
+                                            left: '50%',
+                                            transform: 'translateX(-50%)',
+                                            fontSize: '0.75rem',
+                                            color: '#10b981',
+                                            fontWeight: '500'
+                                        }}>
+                                            ¥{trend.amount}
+                                        </div>
+                                    )}
+                                </div>
+                                <p style={{
+                                    fontSize: '0.75rem',
+                                    color: '#6b7280'
+                                }}>{trend.date}</p>
+                                <p style={{
+                                    fontSize: '0.625rem',
+                                    color: '#9ca3af'
+                                }}>{trend.orders}单</p>
                             </div>
-                        </div>
+                        ))}
                     </div>
                 </div>
 
-                {/* 分析结果 */}
-                {analysis && (
-                    <div className="bg-card border border-border rounded-lg p-6 animate-fade-in">
-                        <div className="flex items-center gap-3 mb-6">
-                            <TrendingUp className="w-5 h-5 text-green-500" />
-                            <h3 className="text-lg font-semibold text-card-foreground">分析结果</h3>
-                        </div>
-                        
-                        <div className="prose prose-sm max-w-none">
-                            {renderMarkdown(analysis)}
-                        </div>
+                {/* 订单标签页 */}
+                <div style={{
+                    background: 'white',
+                    borderRadius: '1rem',
+                    overflow: 'hidden',
+                    boxShadow: '0 2px 10px rgba(0, 0, 0, 0.05)'
+                }}>
+                    {/* 标签栏 */}
+                    <div style={{
+                        display: 'flex',
+                        borderBottom: '1px solid #e5e7eb'
+                    }}>
+                        <button
+                            onClick={() => setActiveTab('debt')}
+                            style={{
+                                flex: 1,
+                                padding: '1rem',
+                                background: activeTab === 'debt' ? 'white' : '#f9fafb',
+                                border: 'none',
+                                borderBottom: activeTab === 'debt' ? '2px solid #10b981' : 'none',
+                                fontSize: '0.875rem',
+                                fontWeight: activeTab === 'debt' ? '500' : '400',
+                                color: activeTab === 'debt' ? '#10b981' : '#6b7280'
+                            }}
+                        >
+                            赊欠订单
+                        </button>
+                        <button
+                            onClick={() => setActiveTab('all')}
+                            style={{
+                                flex: 1,
+                                padding: '1rem',
+                                background: activeTab === 'all' ? 'white' : '#f9fafb',
+                                border: 'none',
+                                borderBottom: activeTab === 'all' ? '2px solid #10b981' : 'none',
+                                fontSize: '0.875rem',
+                                fontWeight: activeTab === 'all' ? '500' : '400',
+                                color: activeTab === 'all' ? '#10b981' : '#6b7280'
+                            }}
+                        >
+                            全部订单
+                            {activeTab === 'all' && (
+                                <span style={{
+                                    display: 'inline-block',
+                                    width: '8px',
+                                    height: '8px',
+                                    background: '#ef4444',
+                                    borderRadius: '50%',
+                                    marginLeft: '4px',
+                                    verticalAlign: 'middle'
+                                }} />
+                            )}
+                        </button>
                     </div>
-                )}
 
-                {/* 加载状态 */}
-                {loading && (
-                    <div className="bg-card border border-border rounded-lg p-8 text-center">
-                        <LoadingSpinner size="lg" text="AI正在分析您的数据..." />
-                        <p className="text-sm text-muted-foreground mt-4">
-                            这可能需要几秒钟时间，请耐心等待
-                        </p>
+                    {/* 订单列表 */}
+                    <div style={{
+                        maxHeight: '500px',
+                        overflowY: 'auto'
+                    }}>
+                        {(activeTab === 'debt' ? debtOrders : allOrders).map((order, index) => {
+                            // 获取客户信息
+                            const customer = customers.find(c => c.id === order.customerId);
+                            const customerName = customer ? customer.name : '未知客户';
+                            
+                            return (
+                                <div key={order.id} style={{
+                                    padding: '1rem',
+                                    borderBottom: index < (activeTab === 'debt' ? debtOrders.length - 1 : allOrders.length - 1) ? '1px solid #f3f4f6' : 'none'
+                                }}>
+                                    {/* 订单头部 */}
+                                    <div style={{
+                                        marginBottom: '0.75rem'
+                                    }}>
+                                        <div style={{
+                                            display: 'flex',
+                                            justifyContent: 'space-between',
+                                            alignItems: 'center',
+                                            marginBottom: '0.25rem'
+                                        }}>
+                                            <p style={{
+                                                fontSize: '0.875rem',
+                                                fontWeight: '500',
+                                                color: '#374151'
+                                            }}>{order.date}</p>
+                                            <p style={{
+                                                fontSize: '0.875rem',
+                                                fontWeight: '500',
+                                                color: order.status === '赊欠' ? '#f97316' : '#10b981'
+                                            }}>{order.status} ¥{order.totalAmount.toFixed(2)}</p>
+                                        </div>
+                                        <p style={{
+                                            fontSize: '0.75rem',
+                                            color: '#6b7280'
+                                        }}>客户: {customerName}</p>
+                                    </div>
+
+                                    {/* 商品列表 */}
+                                    <div style={{
+                                        marginBottom: '0.5rem'
+                                    }}>
+                                        <div style={{
+                                            display: 'grid',
+                                            gridTemplateColumns: '2fr 1fr 1fr 1fr',
+                                            gap: '0.5rem',
+                                            marginBottom: '0.5rem',
+                                            paddingBottom: '0.5rem',
+                                            borderBottom: '1px solid #f3f4f6'
+                                        }}>
+                                            <p style={{
+                                                fontSize: '0.75rem',
+                                                color: '#6b7280',
+                                                fontWeight: '500'
+                                            }}>货品</p>
+                                            <p style={{
+                                                fontSize: '0.75rem',
+                                                color: '#6b7280',
+                                                fontWeight: '500',
+                                                textAlign: 'center'
+                                            }}>数量(重量)</p>
+                                            <p style={{
+                                                fontSize: '0.75rem',
+                                                color: '#6b7280',
+                                                fontWeight: '500',
+                                                textAlign: 'right'
+                                            }}>单价</p>
+                                            <p style={{
+                                                fontSize: '0.75rem',
+                                                color: '#6b7280',
+                                                fontWeight: '500',
+                                                textAlign: 'right'
+                                            }}>小计</p>
+                                        </div>
+
+                                        {order.items.map((item, itemIndex) => (
+                                            <div key={item.id || itemIndex} style={{
+                                                display: 'grid',
+                                                gridTemplateColumns: '2fr 1fr 1fr 1fr',
+                                                gap: '0.5rem',
+                                                alignItems: 'center',
+                                                paddingVertical: '0.25rem'
+                                            }}>
+                                                <p style={{
+                                                    fontSize: '0.875rem',
+                                                    color: '#374151'
+                                                }}>{itemIndex + 1}.{item.name}</p>
+                                                <p style={{
+                                                    fontSize: '0.875rem',
+                                                    color: '#6b7280',
+                                                    textAlign: 'center'
+                                                }}>{item.quantity}</p>
+                                                <p style={{
+                                                    fontSize: '0.875rem',
+                                                    color: '#6b7280',
+                                                    textAlign: 'right'
+                                                }}>{item.price}</p>
+                                                <p style={{
+                                                    fontSize: '0.875rem',
+                                                    color: '#6b7280',
+                                                    textAlign: 'right'
+                                                }}>{(item.quantity * item.price).toFixed(2)}</p>
+                                            </div>
+                                        ))}
+                                    </div>
+                                    
+                                    {/* 操作按钮 */}
+                                    <div style={{
+                                        display: 'flex',
+                                        gap: '0.5rem',
+                                        marginTop: '0.75rem'
+                                    }}>
+                                        <button
+                                            style={{
+                                                flex: 1,
+                                                padding: '0.5rem',
+                                                border: '1px solid #3b82f6',
+                                                borderRadius: '0.5rem',
+                                                background: '#eff6ff',
+                                                color: '#3b82f6',
+                                                fontSize: '0.75rem',
+                                                fontWeight: '500',
+                                                cursor: 'pointer',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                                gap: '0.25rem'
+                                            }}
+                                            onClick={() => shareOrder(order)}
+                                        >
+                                            <Share2 size={14} />
+                                            分享订单
+                                        </button>
+                                        <button
+                                            style={{
+                                                flex: 1,
+                                                padding: '0.5rem',
+                                                border: '1px solid #10b981',
+                                                borderRadius: '0.5rem',
+                                                background: '#dcfce7',
+                                                color: '#059669',
+                                                fontSize: '0.75rem',
+                                                fontWeight: '500',
+                                                cursor: 'pointer',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                                gap: '0.25rem'
+                                            }}
+                                            onClick={() => handleUpdateOrderStatus(order.id, order.status)}
+                                        >
+                                            {order.status === '赊欠' ? (
+                                                <>
+                                                    <CheckCircle size={14} />
+                                                    标记已付
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <XCircle size={14} />
+                                                    标记赊欠
+                                                </>
+                                            )}
+                                        </button>
+                                    </div>
+                                </div>
+                            );
+                        })}
+
+                        {/* 空状态 */}
+                        {(activeTab === 'debt' ? debtOrders : allOrders).length === 0 && (
+                            <div style={{
+                                padding: '3rem 1rem',
+                                textAlign: 'center'
+                            }}>
+                                <p style={{
+                                    fontSize: '0.875rem',
+                                    color: '#9ca3af'
+                                }}>暂无订单</p>
+                            </div>
+                        )}
                     </div>
-                )}
+                </div>
+            </div>
+
+            {/* 底部导航栏 */}
+            <div style={{
+                position: 'fixed',
+                bottom: 0,
+                left: 0,
+                right: 0,
+                background: 'white',
+                borderTop: '1px solid #e5e7eb',
+                padding: '0.75rem 1rem',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-around',
+                boxShadow: '0 -2px 10px rgba(0, 0, 0, 0.05)',
+                zIndex: 50
+            }}>
+                {/* 首页 */}
+                <Link to="/" style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    gap: '0.25rem',
+                    color: '#6b7280',
+                    textDecoration: 'none'
+                }}>
+                    <div style={{
+                        width: '2rem',
+                        height: '2rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center'
+                    }}>
+                        <FileText size={20} />
+                    </div>
+                    <span style={{
+                        fontSize: '0.75rem',
+                        fontWeight: '400'
+                    }}>首页</span>
+                </Link>
+
+                {/* 经营 */}
+                <Link to="/analysis" style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    gap: '0.25rem',
+                    color: '#10b981',
+                    textDecoration: 'none'
+                }}>
+                    <div style={{
+                        width: '2rem',
+                        height: '2rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center'
+                    }}>
+                        <BarChart3 size={20} />
+                    </div>
+                    <span style={{
+                        fontSize: '0.75rem',
+                        fontWeight: '500'
+                    }}>经营</span>
+                </Link>
+
+                {/* 我的 */}
+                <Link to="/settings" style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    gap: '0.25rem',
+                    color: '#6b7280',
+                    textDecoration: 'none'
+                }}>
+                    <div style={{
+                        width: '2rem',
+                        height: '2rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center'
+                    }}>
+                        <Users size={20} />
+                    </div>
+                    <span style={{
+                        fontSize: '0.75rem',
+                        fontWeight: '400'
+                    }}>我的</span>
+                </Link>
             </div>
         </div>
     );
 }
+
+export default Analysis;

@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
-import { Upload, Plus, Trash2, CheckCircle, Printer, User, Search } from 'lucide-react';
-import { analyzeImage } from '../services/gemini';
+import { Link } from 'react-router-dom';
+import { Upload, Plus, Trash2, CheckCircle, Printer, User, Search, Camera, FileText, Bell } from 'lucide-react';
+import { analyzeImageWithDeepSeek } from '../services/openai';
 import { useOrders, type OrderItem } from '../hooks/useOrders';
 import { useCustomers } from '../hooks/useCustomers';
 import { useLocalStorage } from '../hooks/useLocalStorage';
@@ -12,11 +13,15 @@ import { useToast } from '../components/ui/Toast';
 function Billing() {
     const { addOrder } = useOrders();
     const { customers, addCustomer, updateCustomerSpending } = useCustomers();
-    const [apiKey] = useLocalStorage('gemini_api_key', '');
+    const [apiKey] = useLocalStorage('deepseek_api_key', '');
+    const [recognitionPrompt] = useLocalStorage('deepseek_recognition_prompt', '');
     const { showToast } = useToast();
 
     // 常用列表
     const [savedGoods, setSavedGoods] = useLocalStorage<string[]>('billing_frequent_goods', ['四川西兰', '湖北红油菜']);
+    
+    // 商品列表
+    const [products, setProducts] = useLocalStorage<any[]>('billing_products', []);
 
     // 状态管理
     const [items, setItems] = useState<OrderItem[]>([]);
@@ -32,7 +37,7 @@ function Billing() {
     const [showSuccess, setShowSuccess] = useState(false);
 
     // 客户选择状态
-    const [selectedCustomer, setSelectedCustomer] = useState('');
+    const [selectedCustomer, setSelectedCustomer] = useState<string>('');
     const [customerQuery, setCustomerQuery] = useState('');
     const [showAddCustomer, setShowAddCustomer] = useState(false);
 
@@ -40,7 +45,7 @@ function Billing() {
     const [newCustomer, setNewCustomer] = useState({
         name: '',
         phone: '',
-        email: ''
+        licensePlate: ''
     });
 
     // 过滤客户列表
@@ -56,6 +61,7 @@ function Billing() {
     // 选中的客户信息
     const selectedCustomerInfo = customers.find(c => c.id === selectedCustomer);
 
+    // 处理文件上传
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
@@ -64,14 +70,14 @@ function Billing() {
             showToast({
                 type: 'error',
                 title: '缺少API密钥',
-                message: '请先在设置页面配置Gemini API密钥'
+                message: '请先在设置页面配置OpenAI API密钥'
             });
             return;
         }
 
         setIsAnalyzing(true);
         try {
-            const resultJson = await analyzeImage(file, apiKey);
+            const resultJson = await analyzeImageWithDeepSeek(file, apiKey, recognitionPrompt);
             const result = JSON.parse(resultJson);
             
             if (result.items && Array.isArray(result.items)) {
@@ -79,7 +85,7 @@ function Billing() {
                     id: Math.random().toString(36).substr(2, 9),
                     name: item.name || 'Unknown Item',
                     quantity: Number(item.quantity) || 1,
-                    price: Number(item.price) || 0
+                    price: Number(item.price) || ''
                 }));
                 setItems(prev => [...prev, ...newItems]);
                 
@@ -88,45 +94,59 @@ function Billing() {
                     title: '识别成功',
                     message: `成功识别 ${newItems.length} 个商品`
                 });
+            } else {
+                showToast({
+                    type: 'warning',
+                    title: '识别结果不完整',
+                    message: '未能从图片中识别出商品信息，请检查图片质量'
+                });
             }
         } catch (error) {
-            console.error(error);
+            console.error('Error analyzing image:', error);
             showToast({
                 type: 'error',
                 title: '识别失败',
-                message: '请检查API密钥或网络连接'
+                message: error instanceof Error ? error.message : '请检查API密钥或网络连接'
             });
         } finally {
             setIsAnalyzing(false);
         }
     };
-
+    // 添加商品
     const addItem = (name = '') => {
+        // 查找商品价格
+        const product = products.find(p => p.name === name);
+        const price = product ? product.price : '';
+        
         const newItem = {
             id: Math.random().toString(36).substr(2, 9),
             name,
             quantity: 1,
-            price: 0
+            price
         };
         setItems([...items, newItem]);
     };
-
+    // 更新商品信息
     const updateItem = (id: string, field: keyof OrderItem, value: string | number) => {
+        // 处理价格字段，保持空字符串值
         setItems(items.map(item =>
             item.id === id ? { ...item, [field]: value } : item
         ));
     };
 
+    // 删除商品
     const removeItem = (id: string) => {
         setItems(items.filter(item => item.id !== id));
     };
 
+    // 保存常用商品
     const saveFrequentGood = (name: string) => {
         if (name && !savedGoods.includes(name)) {
             setSavedGoods([...savedGoods, name]);
         }
     };
 
+    // 添加客户
     const handleAddCustomer = () => {
         if (!newCustomer.name.trim()) {
             showToast({
@@ -138,23 +158,66 @@ function Billing() {
 
         addCustomer(newCustomer);
         setShowAddCustomer(false);
-        setNewCustomer({ name: '', phone: '', email: '' });
+        setNewCustomer({ name: '', phone: '', licensePlate: '' });
         
         showToast({
             type: 'success',
             title: '客户添加成功'
         });
     };
-
-    const totalAmount = items.reduce((sum, item) => sum + (item.quantity * item.price), 0);
-
+    // 计算总金额
+    const totalAmount = items.reduce((sum, item) => {
+        const price = item.price === '' ? 0 : item.price;
+        return sum + (item.quantity * price);
+    }, 0);
+    // 确认下单
     const handleConfirm = () => {
+        // 验证是否选择了客户
+        if (!selectedCustomer) {
+            showToast({
+                type: 'error',
+                title: '请选择客户'
+            });
+            return;
+        }
+
+        // 验证是否添加了商品
         if (items.length === 0) {
             showToast({
                 type: 'error',
                 title: '请添加商品'
             });
             return;
+        }
+
+        // 验证每个商品的信息
+        for (let i = 0; i < items.length; i++) {
+            const item = items[i];
+            if (!item.name || item.name.trim() === '') {
+                showToast({
+                    type: 'error',
+                    title: '请填写商品名称',
+                    message: `第 ${i + 1} 个商品未填写名称`
+                });
+                return;
+            }
+            if (!item.quantity || item.quantity <= 0) {
+                showToast({
+                    type: 'error',
+                    title: '请填写商品数量',
+                    message: `第 ${i + 1} 个商品数量无效`
+                });
+                return;
+            }
+            const price = item.price === '' ? 0 : item.price;
+            if (!price || price < 0) {
+                showToast({
+                    type: 'error',
+                    title: '请填写商品单价',
+                    message: `第 ${i + 1} 个商品单价无效`
+                });
+                return;
+            }
         }
 
         const order = addOrder(items, selectedCustomer);
@@ -177,6 +240,7 @@ function Billing() {
         });
     };
 
+    // 打印收据
     const handlePrint = () => {
         if (!lastOrder) return;
 
@@ -248,53 +312,267 @@ function Billing() {
     };
 
     return (
-        <div className="min-h-screen bg-background">
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-                <div className="mb-8">
-                    <h1 className="text-2xl font-bold text-card-foreground mb-2">智能开单</h1>
-                    <p className="text-muted-foreground">上传图片自动识别商品，或手动添加订单项目</p>
+        <div style={{
+            minHeight: '100vh',
+            background: '#f5f5f5',
+            fontFamily: 'PingFang SC, Helvetica Neue, Arial, sans-serif'
+        }}>
+            {/* 顶部蓝色导航栏 */}
+            <div style={{
+                background: 'linear-gradient(135deg, #1e40af 0%, #3b82f6 100%)',
+                padding: '1rem',
+                position: 'relative',
+                overflow: 'hidden'
+            }}>
+                {/* 装饰元素 */}
+                <div style={{
+                    position: 'absolute',
+                    top: '-50%',
+                    right: '-20%',
+                    width: '200px',
+                    height: '200px',
+                    background: 'rgba(255, 255, 255, 0.1)',
+                    borderRadius: '50%'
+                }} />
+                <div style={{
+                    position: 'absolute',
+                    bottom: '-30%',
+                    left: '-10%',
+                    width: '150px',
+                    height: '150px',
+                    background: 'rgba(255, 255, 255, 0.1)',
+                    borderRadius: '50%'
+                }} />
+
+                {/* 顶部操作栏 */}
+                <div style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    position: 'relative',
+                    zIndex: 10
+                }}>
+                    <h1 style={{
+                        fontSize: '1.25rem',
+                        fontWeight: 'bold',
+                        color: 'white'
+                    }}>老俞开单</h1>
+                    <div style={{
+                        display: 'flex',
+                        gap: '1rem'
+                    }}>
+                        <button style={{
+                            background: 'rgba(255, 255, 255, 0.2)',
+                            border: 'none',
+                            borderRadius: '50%',
+                            width: '2.5rem',
+                            height: '2.5rem',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            color: 'white'
+                        }}>
+                            <Bell size={20} />
+                        </button>
+                        <button style={{
+                            background: 'rgba(255, 255, 255, 0.2)',
+                            border: 'none',
+                            borderRadius: '50%',
+                            width: '2.5rem',
+                            height: '2.5rem',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            color: 'white'
+                        }}>
+                            <FileText size={20} />
+                        </button>
+                    </div>
                 </div>
 
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                {/* 智能识别部分 */}
+                <div style={{
+                    marginTop: '0.5rem',
+                    position: 'relative',
+                    zIndex: 10,
+                    display: 'flex',
+                    justifyContent: 'flex-end'
+                }}>
+                    <button
+                        onClick={() => {
+                            const input = document.createElement('input');
+                            input.type = 'file';
+                            input.accept = 'image/*';
+                            input.capture = 'camera';
+                            input.onchange = handleFileUpload;
+                            input.click();
+                        }}
+                        style={{
+                            width: '80px',
+                            height: '80px',
+                            borderRadius: '1rem',
+                            background: 'rgba(255, 255, 255, 0.2)',
+                            border: '2px dashed rgba(255, 255, 255, 0.3)',
+                            color: 'white',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '0.25rem',
+                            transition: 'all 0.2s'
+                        }}
+                        onHover={(e) => {
+                            e.target.style.backgroundColor = 'rgba(255, 255, 255, 0.3)';
+                        }}
+                    >
+                        <Camera size={24} />
+                        <span style={{
+                            fontSize: '0.75rem',
+                            fontWeight: '500'
+                        }}>智能识别</span>
+                    </button>
+                </div>
+            </div>
+
+            {/* 主体内容 */}
+            <div style={{
+                padding: '1rem',
+                paddingBottom: '8rem'
+            }}>
+                {/* 客户信息卡片 */}
+                {selectedCustomerInfo && (
+                    <div style={{
+                        background: 'white',
+                        borderRadius: '1rem',
+                        padding: '1rem',
+                        marginBottom: '1rem',
+                        boxShadow: '0 2px 10px rgba(0, 0, 0, 0.05)'
+                    }}>
+                        <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.75rem'
+                        }}>
+                            <div style={{
+                                width: '2.5rem',
+                                height: '2.5rem',
+                                borderRadius: '50%',
+                                background: 'linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center'
+                            }}>
+                                <User size={18} style={{ color: 'white' }} />
+                            </div>
+                            <div>
+                                <h3 style={{
+                                    fontSize: '1rem',
+                                    fontWeight: '500',
+                                    color: '#374151'
+                                }}>{selectedCustomerInfo.name}</h3>
+                                <p style={{
+                                    fontSize: '0.875rem',
+                                    color: '#6b7280'
+                                }}>{selectedCustomerInfo.phone}</p>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                <div style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '1rem'
+                }}>
                     {/* 客户选择 */}
-                    <div className="lg:col-span-1">
-                        <div className="bg-card rounded-lg border border-border p-6">
-                            <h2 className="text-lg font-semibold text-card-foreground mb-4 flex items-center gap-2">
-                                <User size={20} />
+                    {!selectedCustomerInfo && (
+                        <div style={{
+                            background: 'white',
+                            borderRadius: '1rem',
+                            padding: '1rem',
+                            boxShadow: '0 2px 10px rgba(0, 0, 0, 0.05)'
+                        }}>
+                            <h2 style={{
+                                fontSize: '1rem',
+                                fontWeight: '500',
+                                color: '#374151',
+                                marginBottom: '1rem',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '0.5rem'
+                            }}>
+                                <User size={18} />
                                 选择客户
                             </h2>
                             
                             <Dropdown
                                 trigger={
-                                    <div className="w-full p-3 border border-border rounded-lg cursor-pointer hover:bg-muted transition-colors">
-                                        <div className="flex items-center justify-between">
+                                    <div style={{
+                                        width: '100%',
+                                        padding: '0.75rem',
+                                        border: '1px solid #e5e7eb',
+                                        borderRadius: '0.75rem',
+                                        cursor: 'pointer',
+                                        backgroundColor: '#ffffff',
+                                        transition: 'all 0.2s'
+                                    }}>
+                                        <div style={{
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'space-between'
+                                        }}>
                                             <div>
                                                 {selectedCustomerInfo ? (
                                                     <div>
-                                                        <p className="font-medium text-card-foreground">{selectedCustomerInfo.name}</p>
-                                                        <p className="text-sm text-muted-foreground">{selectedCustomerInfo.phone}</p>
+                                                        <p style={{
+                                                            fontSize: '0.875rem',
+                                                            fontWeight: '500',
+                                                            color: '#374151'
+                                                        }}>{selectedCustomerInfo.name}</p>
+                                                        <p style={{
+                                                            fontSize: '0.75rem',
+                                                            color: '#6b7280'
+                                                        }}>{selectedCustomerInfo.phone}</p>
                                                     </div>
                                                 ) : (
-                                                    <p className="text-muted-foreground">选择或搜索客户</p>
+                                                    <p style={{
+                                                        fontSize: '0.875rem',
+                                                        color: '#6b7280'
+                                                    }}>选择或搜索客户</p>
                                                 )}
                                             </div>
-                                            <Search size={16} className="text-muted-foreground" />
+                                            <Search size={16} style={{ color: '#6b7280' }} />
                                         </div>
                                     </div>
                                 }
                             >
-                                <div className="p-2">
+                                <div style={{
+                                    padding: '0.5rem'
+                                }}>
                                     <input
                                         type="text"
                                         placeholder="搜索客户姓名或电话..."
                                         value={customerQuery}
                                         onChange={(e) => setCustomerQuery(e.target.value)}
-                                        className="w-full p-2 border border-border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                                        style={{
+                                            width: '100%',
+                                            padding: '0.5rem',
+                                            border: '1px solid #e5e7eb',
+                                            borderRadius: '0.5rem',
+                                            fontSize: '0.875rem',
+                                            outline: 'none',
+                                            transition: 'all 0.2s'
+                                        }}
+                                        onFocus={(e) => e.target.style.borderColor = '#3b82f6'}
                                         autoFocus
                                     />
                                 </div>
                                 
-                                <div className="max-h-48 overflow-y-auto">
+                                <div style={{
+                                    maxHeight: '200px',
+                                    overflowY: 'auto'
+                                }}>
                                     {filteredCustomers.length > 0 ? (
                                         filteredCustomers.map(customer => (
                                             <DropdownItem
@@ -305,182 +583,364 @@ function Billing() {
                                                 }}
                                             >
                                                 <div>
-                                                    <p className="font-medium">{customer.name}</p>
-                                                    <p className="text-xs text-muted-foreground">{customer.phone}</p>
+                                                    <p style={{
+                                                        fontSize: '0.875rem',
+                                                        fontWeight: '500',
+                                                        color: '#374151'
+                                                    }}>{customer.name}</p>
                                                 </div>
                                             </DropdownItem>
                                         ))
                                     ) : customerQuery ? (
-                                        <div className="p-4 text-center">
-                                            <p className="text-sm text-muted-foreground mb-2">未找到客户</p>
+                                        <div style={{
+                                            padding: '1rem',
+                                            textAlign: 'center'
+                                        }}>
+                                            <p style={{
+                                                fontSize: '0.875rem',
+                                                color: '#6b7280',
+                                                marginBottom: '0.5rem'
+                                            }}>未找到客户</p>
                                             <button
                                                 onClick={() => {
                                                     setNewCustomer({ ...newCustomer, name: customerQuery });
                                                     setShowAddCustomer(true);
                                                 }}
-                                                className="text-sm text-primary hover:underline"
+                                                style={{
+                                                    background: 'transparent',
+                                                    border: 'none',
+                                                    color: '#3b82f6',
+                                                    fontSize: '0.875rem',
+                                                    cursor: 'pointer'
+                                                }}
                                             >
                                                 添加新客户 "{customerQuery}"
                                             </button>
                                         </div>
                                     ) : (
-                                        <div className="p-4 text-center">
-                                            <p className="text-sm text-muted-foreground">暂无客户</p>
+                                        <div style={{
+                                            padding: '1rem',
+                                            textAlign: 'center'
+                                        }}>
+                                            <p style={{
+                                                fontSize: '0.875rem',
+                                                color: '#6b7280'
+                                            }}>暂无客户</p>
                                         </div>
                                     )}
                                 </div>
                                 
-                                <div className="border-t border-border p-2">
+                                <div style={{
+                                    borderTop: '1px solid #e5e7eb',
+                                    padding: '0.5rem'
+                                }}>
                                     <button
                                         onClick={() => setShowAddCustomer(true)}
-                                        className="w-full p-2 text-sm text-primary hover:bg-muted rounded-md transition-colors"
+                                        style={{
+                                            width: '100%',
+                                            padding: '0.5rem',
+                                            background: 'transparent',
+                                            border: 'none',
+                                            color: '#3b82f6',
+                                            fontSize: '0.875rem',
+                                            cursor: 'pointer',
+                                            borderRadius: '0.5rem',
+                                            transition: 'all 0.2s'
+                                        }}
+                                        onHover={(e) => e.target.style.backgroundColor = '#eff6ff'}
                                     >
                                         + 添加新客户
                                     </button>
                                 </div>
                             </Dropdown>
                         </div>
-                    </div>
+                    )}
 
-                    {/* 图片上传 */}
-                    <div className="lg:col-span-1">
-                        <div className="bg-card rounded-lg border border-border p-6">
-                            <h2 className="text-lg font-semibold text-card-foreground mb-4 flex items-center gap-2">
-                                <Upload size={20} />
-                                智能识别
-                            </h2>
-                            
-                            <div className="relative">
-                                <input
-                                    type="file"
-                                    accept="image/*"
-                                    onChange={handleFileUpload}
-                                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                                    disabled={isAnalyzing}
-                                />
-                                <div className={`
-                                    border-2 border-dashed border-border rounded-lg p-8 text-center
-                                    ${isAnalyzing ? 'bg-muted' : 'hover:bg-muted/50 transition-colors'}
-                                `}>
-                                    {isAnalyzing ? (
-                                        <LoadingSpinner text="AI识别中..." />
-                                    ) : (
-                                        <>
-                                            <Upload className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-                                            <p className="text-card-foreground font-medium mb-2">上传订单图片</p>
-                                            <p className="text-sm text-muted-foreground">
-                                                支持 JPG、PNG 格式<br />
-                                                AI将自动识别商品和价格
-                                            </p>
-                                        </>
-                                    )}
+                    {/* 添加商品 */}
+                    <div style={{
+                        background: 'white',
+                        borderRadius: '1rem',
+                        padding: '1rem',
+                        boxShadow: '0 2px 10px rgba(0, 0, 0, 0.05)'
+                    }}>
+                        <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            marginBottom: '1rem'
+                        }}>
+                            <h2 style={{
+                                fontSize: '1rem',
+                                fontWeight: '500',
+                                color: '#374151'
+                            }}>添加商品</h2>
+                            <span style={{
+                                fontSize: '0.875rem',
+                                color: '#6b7280'
+                            }}>
+                                {items.length} 个商品
+                            </span>
+                        </div>
+
+                        {/* 常用商品快捷按钮 */}
+                        {savedGoods.length > 0 && (
+                            <div style={{
+                                marginBottom: '1rem'
+                            }}>
+                                <p style={{
+                                    fontSize: '0.875rem',
+                                    color: '#6b7280',
+                                    marginBottom: '0.5rem'
+                                }}>常用商品:</p>
+                                <div style={{
+                                    display: 'flex',
+                                    flexWrap: 'wrap',
+                                    gap: '0.5rem'
+                                }}>
+                                    {savedGoods.map(good => (
+                                        <button
+                                            key={good}
+                                            onClick={() => addItem(good)}
+                                            style={{
+                                                padding: '0.5rem 0.75rem',
+                                                background: '#f3f4f6',
+                                                border: '1px solid #e5e7eb',
+                                                borderRadius: '0.5rem',
+                                                color: '#374151',
+                                                fontSize: '0.75rem',
+                                                cursor: 'pointer',
+                                                transition: 'all 0.2s'
+                                            }}
+                                            onHover={(e) => e.target.style.backgroundColor = '#e5e7eb'}
+                                        >
+                                            {good}
+                                        </button>
+                                    ))}
                                 </div>
                             </div>
-                        </div>
-                    </div>
+                        )}
 
-                    {/* 订单明细 */}
-                    <div className="lg:col-span-1">
-                        <div className="bg-card rounded-lg border border-border p-6">
-                            <div className="flex items-center justify-between mb-4">
-                                <h2 className="text-lg font-semibold text-card-foreground">订单明细</h2>
-                                <span className="text-sm text-muted-foreground">
-                                    {items.length} 个商品
+                        <button
+                            onClick={() => addItem()}
+                            style={{
+                                width: '100%',
+                                padding: '1rem',
+                                border: '2px dashed #e5e7eb',
+                                borderRadius: '1rem',
+                                background: '#ffffff',
+                                color: '#6b7280',
+                                fontSize: '0.875rem',
+                                fontWeight: '500',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: '0.5rem',
+                                marginBottom: '1rem',
+                                transition: 'all 0.2s'
+                            }}
+                            onHover={(e) => {
+                                e.target.style.borderColor = '#3b82f6';
+                                e.target.style.color = '#3b82f6';
+                            }}
+                        >
+                            <Plus size={16} />
+                            添加商品
+                        </button>
+
+                        {/* 商品列表 */}
+                        <div style={{
+                            marginBottom: '1rem'
+                        }}>
+                            <div style={{
+                                display: 'grid',
+                                gridTemplateColumns: '1fr 1fr 1fr',
+                                gap: '0.75rem',
+                                marginBottom: '1rem',
+                                paddingBottom: '0.75rem',
+                                borderBottom: '1px solid #e5e7eb'
+                            }}>
+                                <div>
+                                    <label style={{
+                                        fontSize: '0.75rem',
+                                        fontWeight: '500',
+                                        color: '#6b7280',
+                                        marginBottom: '0.25rem',
+                                        display: 'block'
+                                    }}>
+                                        名称
+                                    </label>
+                                </div>
+                                <div>
+                                    <label style={{
+                                        fontSize: '0.75rem',
+                                        fontWeight: '500',
+                                        color: '#6b7280',
+                                        marginBottom: '0.25rem',
+                                        display: 'block'
+                                    }}>
+                                        件数
+                                    </label>
+                                </div>
+                                <div>
+                                    <label style={{
+                                        fontSize: '0.75rem',
+                                        fontWeight: '500',
+                                        color: '#6b7280',
+                                        marginBottom: '0.25rem',
+                                        display: 'block'
+                                    }}>
+                                        单价
+                                    </label>
+                                </div>
+                            </div>
+                            
+                            {items.map(item => (
+                                <div key={item.id} style={{
+                                    display: 'grid',
+                                    gridTemplateColumns: '1fr 1fr 1fr',
+                                    gap: '0.75rem',
+                                    marginBottom: '1rem',
+                                    padding: '1rem',
+                                    background: '#f9fafb',
+                                    borderRadius: '0.75rem'
+                                }}>
+                                    <div>
+                                        <input
+                                            type="text"
+                                            placeholder="商品名称"
+                                            value={item.name}
+                                            onChange={(e) => updateItem(item.id, 'name', e.target.value)}
+                                            onBlur={() => saveFrequentGood(item.name)}
+                                            style={{
+                                                width: '100%',
+                                                padding: '0.75rem',
+                                                border: '1px solid #e5e7eb',
+                                                borderRadius: '0.5rem',
+                                                fontSize: '0.875rem',
+                                                outline: 'none',
+                                                transition: 'all 0.2s'
+                                            }}
+                                            onFocus={(e) => e.target.style.borderColor = '#3b82f6'}
+                                        />
+                                    </div>
+                                    <div>
+                                        <input
+                                            type="number"
+                                            placeholder="数量"
+                                            value={item.quantity}
+                                            onChange={(e) => updateItem(item.id, 'quantity', Number(e.target.value))}
+                                            style={{
+                                                width: '100%',
+                                                padding: '0.75rem',
+                                                border: '1px solid #e5e7eb',
+                                                borderRadius: '0.5rem',
+                                                fontSize: '0.875rem',
+                                                outline: 'none',
+                                                transition: 'all 0.2s'
+                                            }}
+                                            onFocus={(e) => e.target.style.borderColor = '#3b82f6'}
+                                            min="1"
+                                        />
+                                    </div>
+                                    <div style={{
+                                        display: 'flex',
+                                        gap: '0.5rem'
+                                    }}>
+                                        <input
+                                            type="number"
+                                            placeholder="单价"
+                                            value={item.price === '' ? '' : item.price}
+                                            onChange={(e) => {
+                                                const value = e.target.value;
+                                                updateItem(item.id, 'price', value === '' ? '' : Number(value));
+                                            }}
+                                            style={{
+                                                flex: 1,
+                                                padding: '0.75rem',
+                                                border: '1px solid #e5e7eb',
+                                                borderRadius: '0.5rem',
+                                                fontSize: '0.875rem',
+                                                outline: 'none',
+                                                transition: 'all 0.2s'
+                                            }}
+                                            onFocus={(e) => e.target.style.borderColor = '#3b82f6'}
+                                            min="0"
+                                            step="0.01"
+                                        />
+                                        <button
+                                            onClick={() => removeItem(item.id)}
+                                            style={{
+                                                padding: '0.5rem',
+                                                background: '#fee2e2',
+                                                border: '1px solid #fecaca',
+                                                borderRadius: '0.5rem',
+                                                color: '#dc2626',
+                                                cursor: 'pointer',
+                                                transition: 'all 0.2s',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center'
+                                            }}
+                                            onHover={(e) => {
+                                                e.target.style.backgroundColor = '#fecaca';
+                                            }}
+                                        >
+                                            <Trash2 size={16} />
+                                        </button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+
+                        {/* 总计和操作按钮 */}
+                        <div style={{
+                            borderTop: '1px solid #e5e7eb',
+                            paddingTop: '1rem'
+                        }}>
+                            <div style={{
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'center',
+                                marginBottom: '1.5rem'
+                            }}>
+                                <span style={{
+                                    fontSize: '1.125rem',
+                                    fontWeight: '500',
+                                    color: '#374151'
+                                }}>总计:</span>
+                                <span style={{
+                                    fontSize: '1.25rem',
+                                    fontWeight: 'bold',
+                                    color: '#3b82f6'
+                                }}>
+                                    ¥{totalAmount.toFixed(2)}
                                 </span>
                             </div>
-
-                            {/* 常用商品快捷按钮 */}
-                            {savedGoods.length > 0 && (
-                                <div className="mb-4">
-                                    <p className="text-sm text-muted-foreground mb-2">常用商品:</p>
-                                    <div className="flex flex-wrap gap-2">
-                                        {savedGoods.map(good => (
-                                            <button
-                                                key={good}
-                                                onClick={() => addItem(good)}
-                                                className="px-3 py-1 text-xs bg-muted hover:bg-muted/80 rounded-full transition-colors"
-                                            >
-                                                {good}
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
-
+                            
                             <button
-                                onClick={() => addItem()}
-                                className="w-full mb-4 p-3 border border-dashed border-border rounded-lg hover:bg-muted transition-colors flex items-center justify-center gap-2 text-muted-foreground"
+                                onClick={handleConfirm}
+                                disabled={items.length === 0 || !selectedCustomer}
+                                style={{
+                                    width: '100%',
+                                    padding: '1.25rem',
+                                    background: items.length > 0 && selectedCustomer ? 'linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)' : '#9ca3af',
+                                    border: 'none',
+                                    borderRadius: '1rem',
+                                    color: 'white',
+                                    fontSize: '1rem',
+                                    fontWeight: '500',
+                                    cursor: items.length > 0 && selectedCustomer ? 'pointer' : 'not-allowed',
+                                    boxShadow: items.length > 0 && selectedCustomer ? '0 4px 12px rgba(59, 130, 246, 0.3)' : 'none',
+                                    transition: 'all 0.2s'
+                                }}
                             >
-                                <Plus size={16} />
-                                添加商品
+                                确认下单
                             </button>
-
-                            {/* 商品列表 */}
-                            <div className="space-y-3 mb-6 max-h-96 overflow-y-auto">
-                                {items.map(item => (
-                                    <div key={item.id} className="p-3 bg-muted/50 rounded-lg">
-                                        <div className="grid grid-cols-12 gap-2 items-center">
-                                            <input
-                                                type="text"
-                                                placeholder="商品名称"
-                                                value={item.name}
-                                                onChange={(e) => updateItem(item.id, 'name', e.target.value)}
-                                                onBlur={() => saveFrequentGood(item.name)}
-                                                className="col-span-5 p-2 text-sm border border-border rounded focus:outline-none focus:ring-1 focus:ring-primary"
-                                            />
-                                            <input
-                                                type="number"
-                                                placeholder="数量"
-                                                value={item.quantity}
-                                                onChange={(e) => updateItem(item.id, 'quantity', Number(e.target.value))}
-                                                className="col-span-2 p-2 text-sm border border-border rounded focus:outline-none focus:ring-1 focus:ring-primary"
-                                                min="1"
-                                            />
-                                            <input
-                                                type="number"
-                                                placeholder="单价"
-                                                value={item.price}
-                                                onChange={(e) => updateItem(item.id, 'price', Number(e.target.value))}
-                                                className="col-span-3 p-2 text-sm border border-border rounded focus:outline-none focus:ring-1 focus:ring-primary"
-                                                min="0"
-                                                step="0.01"
-                                            />
-                                            <button
-                                                onClick={() => removeItem(item.id)}
-                                                className="col-span-2 p-2 text-red-500 hover:bg-red-50 rounded transition-colors"
-                                                title="删除商品"
-                                            >
-                                                <Trash2 size={14} />
-                                            </button>
-                                        </div>
-                                        <div className="mt-2 text-right">
-                                            <span className="text-sm text-muted-foreground">
-                                                小计: ¥{(item.quantity * item.price).toFixed(2)}
-                                            </span>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-
-                            {/* 总计和操作按钮 */}
-                            <div className="border-t border-border pt-4">
-                                <div className="flex justify-between items-center mb-4">
-                                    <span className="text-lg font-semibold text-card-foreground">总计:</span>
-                                    <span className="text-xl font-bold text-primary">
-                                        ¥{totalAmount.toFixed(2)}
-                                    </span>
-                                </div>
-                                
-                                <button
-                                    onClick={handleConfirm}
-                                    disabled={items.length === 0}
-                                    className="w-full bg-primary text-white py-3 rounded-lg font-medium hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                                >
-                                    确认下单
-                                </button>
-                            </div>
                         </div>
                     </div>
+
+
                 </div>
             </div>
 
@@ -490,57 +950,130 @@ function Billing() {
                 onClose={() => setShowAddCustomer(false)}
                 title="添加新客户"
             >
-                <div className="space-y-4">
+                <div style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '1rem'
+                }}>
                     <div>
-                        <label htmlFor="customer-name" className="block text-sm font-medium text-card-foreground mb-1">
+                        <label style={{
+                            display: 'block',
+                            fontSize: '0.875rem',
+                            fontWeight: '500',
+                            color: '#374151',
+                            marginBottom: '0.5rem'
+                        }}>
                             客户姓名 *
                         </label>
                         <input
-                            id="customer-name"
                             type="text"
                             value={newCustomer.name}
                             onChange={(e) => setNewCustomer({ ...newCustomer, name: e.target.value })}
-                            className="w-full p-3 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                            style={{
+                                width: '100%',
+                                padding: '0.75rem',
+                                border: '1px solid #e5e7eb',
+                                borderRadius: '0.5rem',
+                                fontSize: '0.875rem',
+                                outline: 'none',
+                                transition: 'all 0.2s'
+                            }}
+                            onFocus={(e) => e.target.style.borderColor = '#3b82f6'}
                             placeholder="请输入客户姓名"
-                            required
                         />
                     </div>
                     <div>
-                        <label htmlFor="customer-phone" className="block text-sm font-medium text-card-foreground mb-1">
-                            联系电话
+                        <label style={{
+                            display: 'block',
+                            fontSize: '0.875rem',
+                            fontWeight: '500',
+                            color: '#374151',
+                            marginBottom: '0.5rem'
+                        }}>
+                            联系电话 (选填)
                         </label>
                         <input
-                            id="customer-phone"
                             type="tel"
                             value={newCustomer.phone}
                             onChange={(e) => setNewCustomer({ ...newCustomer, phone: e.target.value })}
-                            className="w-full p-3 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                            style={{
+                                width: '100%',
+                                padding: '0.75rem',
+                                border: '1px solid #e5e7eb',
+                                borderRadius: '0.5rem',
+                                fontSize: '0.875rem',
+                                outline: 'none',
+                                transition: 'all 0.2s'
+                            }}
+                            onFocus={(e) => e.target.style.borderColor = '#3b82f6'}
                             placeholder="请输入联系电话"
                         />
                     </div>
                     <div>
-                        <label htmlFor="customer-email" className="block text-sm font-medium text-card-foreground mb-1">
-                            邮箱地址
+                        <label style={{
+                            display: 'block',
+                            fontSize: '0.875rem',
+                            fontWeight: '500',
+                            color: '#374151',
+                            marginBottom: '0.5rem'
+                        }}>
+                            车牌号 (选填)
                         </label>
                         <input
-                            id="customer-email"
-                            type="email"
-                            value={newCustomer.email}
-                            onChange={(e) => setNewCustomer({ ...newCustomer, email: e.target.value })}
-                            className="w-full p-3 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
-                            placeholder="请输入邮箱地址"
+                            type="text"
+                            value={newCustomer.licensePlate}
+                            onChange={(e) => setNewCustomer({ ...newCustomer, licensePlate: e.target.value })}
+                            style={{
+                                width: '100%',
+                                padding: '0.75rem',
+                                border: '1px solid #e5e7eb',
+                                borderRadius: '0.5rem',
+                                fontSize: '0.875rem',
+                                outline: 'none',
+                                transition: 'all 0.2s'
+                            }}
+                            onFocus={(e) => e.target.style.borderColor = '#3b82f6'}
+                            placeholder="请输入车牌号"
                         />
                     </div>
-                    <div className="flex gap-3 pt-4">
+                    <div style={{
+                        display: 'flex',
+                        gap: '0.75rem',
+                        marginTop: '1rem'
+                    }}>
                         <button
                             onClick={() => setShowAddCustomer(false)}
-                            className="flex-1 py-2 px-4 border border-border rounded-lg hover:bg-muted transition-colors"
+                            style={{
+                                flex: 1,
+                                padding: '0.75rem',
+                                border: '1px solid #e5e7eb',
+                                borderRadius: '0.5rem',
+                                background: '#ffffff',
+                                color: '#374151',
+                                fontSize: '0.875rem',
+                                fontWeight: '500',
+                                cursor: 'pointer',
+                                transition: 'all 0.2s'
+                            }}
+                            onHover={(e) => e.target.style.backgroundColor = '#f9fafb'}
                         >
                             取消
                         </button>
                         <button
                             onClick={handleAddCustomer}
-                            className="flex-1 py-2 px-4 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors"
+                            style={{
+                                flex: 1,
+                                padding: '0.75rem',
+                                border: 'none',
+                                borderRadius: '0.5rem',
+                                background: 'linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)',
+                                color: 'white',
+                                fontSize: '0.875rem',
+                                fontWeight: '500',
+                                cursor: 'pointer',
+                                transition: 'all 0.2s'
+                            }}
+                            onHover={(e) => e.target.style.opacity = '0.9'}
                         >
                             添加客户
                         </button>
@@ -554,24 +1087,67 @@ function Billing() {
                 onClose={() => setShowSuccess(false)}
                 title="订单创建成功"
             >
-                <div className="text-center py-4">
-                    <CheckCircle className="w-16 h-16 text-green-500 mx-auto mb-4" />
-                    <p className="text-lg font-semibold text-card-foreground mb-2">
+                <div style={{
+                    textAlign: 'center',
+                    padding: '2rem 1rem'
+                }}>
+                    <CheckCircle size={48} style={{ color: '#10b981', marginBottom: '1.5rem' }} />
+                    <h3 style={{
+                        fontSize: '1.125rem',
+                        fontWeight: '500',
+                        color: '#374151',
+                        marginBottom: '0.5rem'
+                    }}>
                         订单已成功创建！
-                    </p>
-                    <p className="text-muted-foreground mb-6">
+                    </h3>
+                    <p style={{
+                        fontSize: '0.875rem',
+                        color: '#6b7280',
+                        marginBottom: '2rem'
+                    }}>
                         订单金额: ¥{lastOrder?.totalAmount.toFixed(2)}
                     </p>
-                    <div className="flex gap-3">
+                    <div style={{
+                        display: 'flex',
+                        gap: '0.75rem'
+                    }}>
                         <button
                             onClick={() => setShowSuccess(false)}
-                            className="flex-1 py-2 px-4 border border-border rounded-lg hover:bg-muted transition-colors"
+                            style={{
+                                flex: 1,
+                                padding: '0.75rem',
+                                border: '1px solid #e5e7eb',
+                                borderRadius: '0.5rem',
+                                background: '#ffffff',
+                                color: '#374151',
+                                fontSize: '0.875rem',
+                                fontWeight: '500',
+                                cursor: 'pointer',
+                                transition: 'all 0.2s'
+                            }}
+                            onHover={(e) => e.target.style.backgroundColor = '#f9fafb'}
                         >
                             继续开单
                         </button>
                         <button
                             onClick={handlePrint}
-                            className="flex-1 py-2 px-4 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors flex items-center justify-center gap-2"
+                            style={{
+                                flex: 1,
+                                padding: '0.75rem',
+                                border: 'none',
+                                borderRadius: '0.5rem',
+                                background: 'linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)',
+                                color: 'white',
+                                fontSize: '0.875rem',
+                                fontWeight: '500',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: '0.5rem',
+                                transition: 'all 0.2s'
+                            }}
+                            onHover={(e) => e.target.style.opacity = '0.9'}
                         >
                             <Printer size={16} />
                             打印收据
@@ -579,6 +1155,94 @@ function Billing() {
                     </div>
                 </div>
             </Modal>
+
+            {/* 底部导航栏 */}
+            <div style={{
+                position: 'fixed',
+                bottom: 0,
+                left: 0,
+                right: 0,
+                background: 'white',
+                borderTop: '1px solid #e5e7eb',
+                padding: '0.75rem 1rem',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-around',
+                boxShadow: '0 -2px 10px rgba(0, 0, 0, 0.05)',
+                zIndex: 50
+            }}>
+                {/* 首页 */}
+                <Link to="/" style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    gap: '0.25rem',
+                    color: '#6b7280',
+                    textDecoration: 'none'
+                }}>
+                    <div style={{
+                        width: '2rem',
+                        height: '2rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center'
+                    }}>
+                        <FileText size={20} />
+                    </div>
+                    <span style={{
+                        fontSize: '0.75rem',
+                        fontWeight: '400'
+                    }}>首页</span>
+                </Link>
+
+                {/* 经营 */}
+                <Link to="/analysis" style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    gap: '0.25rem',
+                    color: '#6b7280',
+                    textDecoration: 'none'
+                }}>
+                    <div style={{
+                        width: '2rem',
+                        height: '2rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center'
+                    }}>
+                        <FileText size={20} />
+                    </div>
+                    <span style={{
+                        fontSize: '0.75rem',
+                        fontWeight: '400'
+                    }}>经营</span>
+                </Link>
+
+                {/* 我的 */}
+                <Link to="/settings" style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    gap: '0.25rem',
+                    color: '#6b7280',
+                    textDecoration: 'none'
+                }}>
+                    <div style={{
+                        width: '2rem',
+                        height: '2rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center'
+                    }}>
+                        <User size={20} />
+                    </div>
+                    <span style={{
+                        fontSize: '0.75rem',
+                        fontWeight: '400'
+                    }}>我的</span>
+                </Link>
+            </div>
         </div>
     );
 }

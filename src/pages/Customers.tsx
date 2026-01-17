@@ -188,12 +188,35 @@ export default function Customers() {
                                     </div>
                                 </div>
 
-                                {/* 累计支出 */}
-                                <div className="mb-4 p-3 bg-muted/50 rounded-lg">
-                                    <div className="text-xs text-muted-foreground mb-1">累计支出</div>
-                                    <div className="font-bold text-lg flex items-center gap-1 text-green-600">
-                                        <DollarSign size={16} />
-                                        {formatCurrency(customer.totalSpent)}
+                                {/* 财务信息 */}
+                                <div className="mb-4 space-y-2">
+                                    <div className="p-3 bg-muted/50 rounded-lg">
+                                        <div className="grid grid-cols-2 gap-2 text-sm">
+                                            <div>
+                                                <div className="text-xs text-muted-foreground mb-1">开单总额</div>
+                                                <div className="font-bold text-card-foreground">
+                                                    {formatCurrency(customer.totalSpent)}
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <div className="text-xs text-muted-foreground mb-1">已付金额</div>
+                                                <div className="font-bold text-green-600">
+                                                    {formatCurrency(customer.totalPaid || 0)}
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <div className="text-xs text-muted-foreground mb-1">欠款金额</div>
+                                                <div className="font-bold text-red-600">
+                                                    {formatCurrency((customer.totalSpent || 0) - (customer.totalPaid || 0))}
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <div className="text-xs text-muted-foreground mb-1">近30天订单</div>
+                                                <div className="font-bold text-card-foreground">
+                                                    {customer.recentOrders || 0} 笔
+                                                </div>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
 
