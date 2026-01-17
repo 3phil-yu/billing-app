@@ -4,7 +4,7 @@ export interface DashboardData {
     todaySales: number;
     orders: number;
     newCustomers: number;
-    salesTrend: any[];
+    salesTrend: Array<{ name: string; sales: number }>;
 }
 
 export function useDashboardData() {

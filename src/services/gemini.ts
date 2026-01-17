@@ -46,7 +46,7 @@ export async function analyzeImage(imageFile: File, apiKey: string): Promise<str
     }
 }
 
-export async function analyzeDemand(data: any, query: string, apiKey: string): Promise<string> {
+export async function analyzeDemand(data: Record<string, unknown>, query: string, apiKey: string): Promise<string> {
     if (!apiKey) {
         throw new Error("API Key is required");
     }

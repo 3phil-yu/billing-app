@@ -4,16 +4,53 @@ import { VitePWA } from 'vite-plugin-pwa'
 
 // https://vite.dev/config/
 export default defineConfig({
+  base: process.env.NODE_ENV === 'production' ? '/billing-app/' : '/',
   plugins: [
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'mask-icon.svg'],
+      workbox: {
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+        navigateFallback: 'index.html',
+        navigateFallbackDenylist: [/^\/_/, /\/[^/?]+\.[^/]+$/],
+        runtimeCaching: [
+          {
+            urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'google-fonts-cache',
+              expiration: {
+                maxEntries: 10,
+                maxAgeSeconds: 60 * 60 * 24 * 365 // 365 days
+              }
+            }
+          },
+          {
+            urlPattern: /^https:\/\/generativelanguage\.googleapis\.com\/.*/i,
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: 'gemini-api-cache',
+              expiration: {
+                maxEntries: 50,
+                maxAgeSeconds: 60 * 60 // 1 hour
+              }
+            }
+          }
+        ]
+      },
+      includeAssets: ['favicon.ico', 'icon-192.png', 'icon-512.png', 'vite.svg'],
       manifest: {
-        name: '智能对账开单',
+        name: '智能开单系统',
         short_name: '开单宝',
-        description: '专业、智能的财务对账与开单管理系统',
-        theme_color: '#10b981',
+        description: '专业、智能的财务对账与开单管理系统，支持AI图片识别',
+        theme_color: '#7c3aed',
+        background_color: '#0f172a',
+        display: 'standalone',
+        orientation: 'portrait',
+        scope: '/billing-app/',
+        start_url: '/billing-app/',
+        categories: ['business', 'finance', 'productivity'],
+        lang: 'zh-CN',
         icons: [
           {
             src: 'icon-192.png',
@@ -31,8 +68,61 @@ export default defineConfig({
             type: 'image/png',
             purpose: 'any maskable'
           }
+        ],
+        screenshots: [
+          {
+            src: 'icon-512.png',
+            sizes: '512x512',
+            type: 'image/png',
+            form_factor: 'narrow'
+          }
+        ],
+        shortcuts: [
+          {
+            name: '快速开单',
+            short_name: '开单',
+            description: '立即创建新订单',
+            url: '/billing-app/billing',
+            icons: [{ src: 'icon-192.png', sizes: '192x192' }]
+          },
+          {
+            name: '查看控制台',
+            short_name: '控制台',
+            description: '查看销售统计',
+            url: '/billing-app/',
+            icons: [{ src: 'icon-192.png', sizes: '192x192' }]
+          }
         ]
+      },
+      devOptions: {
+        enabled: true
       }
     })
   ],
+  server: {
+    host: true,
+    port: 5173,
+    open: true, // 自动打开浏览器
+    cors: true
+  },
+  build: {
+    outDir: 'dist',
+    assetsDir: 'assets',
+    sourcemap: false,
+    minify: 'terser',
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          vendor: ['react', 'react-dom'],
+          router: ['react-router-dom'],
+          ui: ['lucide-react', 'framer-motion'],
+          ai: ['@google/generative-ai']
+        }
+      }
+    },
+    chunkSizeWarningLimit: 1000
+  },
+  optimizeDeps: {
+    include: ['react', 'react-dom', 'react-router-dom', 'lucide-react']
+  }
 })

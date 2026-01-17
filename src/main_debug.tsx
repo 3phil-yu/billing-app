@@ -13,6 +13,8 @@ function TestApp() {
     )
 }
 
+export default TestApp;
+
 createRoot(document.getElementById('root')!).render(
     <StrictMode>
         <TestApp />

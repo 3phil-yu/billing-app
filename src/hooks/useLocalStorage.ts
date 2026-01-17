@@ -16,7 +16,8 @@ export function useLocalStorage<T>(key: string, initialValue: T) {
         }
     }, [initialValue, key]);
 
-    const [storedValue, setStoredValue] = useState<T>(readValue);
+    // Initialize with stored value
+    const [storedValue, setStoredValue] = useState<T>(() => readValue());
 
     // Return a wrapped version of useState's setter function that ...
     // ... persists the new value to localStorage.
@@ -33,9 +34,16 @@ export function useLocalStorage<T>(key: string, initialValue: T) {
         }
     }, [key, storedValue]);
 
+    // Listen for changes to localStorage
     useEffect(() => {
-        setStoredValue(readValue());
-    }, []);
+        const handleStorageChange = () => {
+            const newValue = readValue();
+            setStoredValue(newValue);
+        };
+
+        window.addEventListener('storage', handleStorageChange);
+        return () => window.removeEventListener('storage', handleStorageChange);
+    }, [readValue]);
 
     return [storedValue, setValue] as const;
 }

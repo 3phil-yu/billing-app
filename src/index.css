@@ -1,38 +1,44 @@
 :root {
-  /* Premium Color Palette - HSL */
-  --primary: 250 100% 65%;
-  /* Vibrant Purple */
+  /* Modern Color Palette - HSL */
+  --primary: 238 75% 60%;
+  /* Indigo */
   --primary-foreground: 0 0% 100%;
 
-  --secondary: 180 100% 40%;
-  /* Teal */
+  --secondary: 152 70% 40%;
+  /* Green */
   --secondary-foreground: 0 0% 100%;
 
-  --accent: 320 100% 60%;
-  /* Pink/Magenta for highlights */
+  --accent: 280 65% 60%;
+  /* Purple */
   --accent-foreground: 0 0% 100%;
 
-  --background: 240 10% 4%;
-  /* Very Dark Blue/Grey */
-  --foreground: 0 0% 98%;
+  --background: 224 71% 4%;
+  /* Dark Slate */
+  --foreground: 213 31% 91%;
 
-  --card: 240 10% 6%;
-  --card-foreground: 0 0% 98%;
+  --card: 224 71% 6%;
+  --card-foreground: 213 31% 91%;
 
-  --popover: 240 10% 6%;
-  --popover-foreground: 0 0% 98%;
+  --popover: 224 71% 6%;
+  --popover-foreground: 213 31% 91%;
 
-  --muted: 240 4% 16%;
-  --muted-foreground: 240 5% 65%;
+  --muted: 223 47% 11%;
+  --muted-foreground: 215 20% 65%;
 
-  --border: 240 4% 16%;
-  --input: 240 4% 16%;
-  --ring: 250 100% 65%;
+  --border: 216 34% 17%;
+  --input: 216 34% 17%;
+  --ring: 224 76% 48%;
 
   --radius: 0.75rem;
 
   /* Font Family */
   --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  
+  /* Mobile Optimizations */
+  --safe-area-inset-top: env(safe-area-inset-top, 0px);
+  --safe-area-inset-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-area-inset-left: env(safe-area-inset-left, 0px);
+  --safe-area-inset-right: env(safe-area-inset-right, 0px);
 }
 
 /* Light Mode Overrides (if we want to support it later, but focusing on dark premium first) */
@@ -51,6 +57,13 @@
   border-color: hsl(var(--border));
 }
 
+/* Mobile-first reset */
+html {
+  font-size: 16px;
+  -webkit-text-size-adjust: 100%;
+  scroll-behavior: smooth;
+}
+
 body {
   margin: 0;
   font-family: var(--font-sans);
@@ -58,6 +71,27 @@ body {
   color: hsl(var(--foreground));
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  line-height: 1.6;
+  min-height: 100vh;
+  /* Mobile optimizations */
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Safe area padding for mobile devices */
+.safe-area {
+  padding-top: var(--safe-area-inset-top);
+  padding-bottom: var(--safe-area-inset-bottom);
+  padding-left: var(--safe-area-inset-left);
+  padding-right: var(--safe-area-inset-right);
+}
+
+/* Mobile touch targets */
+@media (max-width: 768px) {
+  button, a {
+    min-height: 44px;
+    min-width: 44px;
+  }
 }
 
 h1,
@@ -202,8 +236,38 @@ button {
   }
 }
 
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
 .animate-fade-in {
   animation: fadeIn 0.5s ease-out forwards;
+}
+
+.animate-slide-down {
+  animation: slideDown 0.2s ease-out;
+}
+
+.animate-scale-in {
+  animation: scaleIn 0.2s ease-out;
 }
 
 .animate-in {

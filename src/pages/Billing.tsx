@@ -1,61 +1,114 @@
 import { useState, useMemo } from 'react';
-import { Upload, Plus, Trash2, CheckCircle, Loader2, Printer, User, Search, Save, History } from 'lucide-react';
+import { Upload, Plus, Trash2, CheckCircle, Printer, User, Search } from 'lucide-react';
 import { analyzeImage } from '../services/gemini';
 import { useOrders, type OrderItem } from '../hooks/useOrders';
 import { useCustomers } from '../hooks/useCustomers';
 import { useLocalStorage } from '../hooks/useLocalStorage';
+import Modal from '../components/ui/Modal';
+import Dropdown, { DropdownItem } from '../components/ui/Dropdown';
+import LoadingSpinner from '../components/ui/LoadingSpinner';
+import { useToast } from '../components/ui/Toast';
 
 function Billing() {
     const { addOrder } = useOrders();
-    const { customers } = useCustomers();
+    const { customers, addCustomer, updateCustomerSpending } = useCustomers();
     const [apiKey] = useLocalStorage('gemini_api_key', '');
+    const { showToast } = useToast();
 
-    // Frequent lists for quick selection
+    // 常用列表
     const [savedGoods, setSavedGoods] = useLocalStorage<string[]>('billing_frequent_goods', ['四川西兰', '湖北红油菜']);
-    const [savedCustomers, setSavedCustomers] = useLocalStorage<string[]>('billing_frequent_customers', []);
 
+    // 状态管理
     const [items, setItems] = useState<OrderItem[]>([]);
     const [isAnalyzing, setIsAnalyzing] = useState(false);
-    const [lastOrder, setLastOrder] = useState<any>(null);
+    const [lastOrder, setLastOrder] = useState<{
+        id: string;
+        date: string;
+        items: OrderItem[];
+        totalAmount: number;
+        customerId?: string;
+        status: string;
+    } | null>(null);
+    const [showSuccess, setShowSuccess] = useState(false);
 
-    // Customer selection state
+    // 客户选择状态
     const [selectedCustomer, setSelectedCustomer] = useState('');
-    const [showCustomerSearch, setShowCustomerSearch] = useState(false);
     const [customerQuery, setCustomerQuery] = useState('');
+    const [showAddCustomer, setShowAddCustomer] = useState(false);
 
+    // 新客户表单
+    const [newCustomer, setNewCustomer] = useState({
+        name: '',
+        phone: '',
+        email: ''
+    });
+
+    // 过滤客户列表
     const filteredCustomers = useMemo(() => {
         const query = customerQuery.toLowerCase();
         return customers.filter(c =>
-            c.name.toLowerCase().includes(query) || c.phone.includes(query)
+            c.name.toLowerCase().includes(query) || 
+            c.phone.includes(query) ||
+            c.email.toLowerCase().includes(query)
         );
     }, [customers, customerQuery]);
+
+    // 选中的客户信息
+    const selectedCustomerInfo = customers.find(c => c.id === selectedCustomer);
 
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
+
+        if (!apiKey) {
+            showToast({
+                type: 'error',
+                title: '缺少API密钥',
+                message: '请先在设置页面配置Gemini API密钥'
+            });
+            return;
+        }
+
         setIsAnalyzing(true);
         try {
             const resultJson = await analyzeImage(file, apiKey);
             const result = JSON.parse(resultJson);
+            
             if (result.items && Array.isArray(result.items)) {
-                const newItems = result.items.map((item: any) => ({
+                const newItems = result.items.map((item: { name?: string; quantity?: number; price?: number }) => ({
                     id: Math.random().toString(36).substr(2, 9),
                     name: item.name || 'Unknown Item',
                     quantity: Number(item.quantity) || 1,
                     price: Number(item.price) || 0
                 }));
                 setItems(prev => [...prev, ...newItems]);
+                
+                showToast({
+                    type: 'success',
+                    title: '识别成功',
+                    message: `成功识别 ${newItems.length} 个商品`
+                });
             }
         } catch (error) {
             console.error(error);
-            alert("Gemini 识别失败，请检查 API Key 或网络连通性。");
+            showToast({
+                type: 'error',
+                title: '识别失败',
+                message: '请检查API密钥或网络连接'
+            });
         } finally {
             setIsAnalyzing(false);
         }
     };
 
     const addItem = (name = '') => {
-        setItems([...items, { id: Math.random().toString(36).substr(2, 9), name: name, quantity: 1, price: 0 }]);
+        const newItem = {
+            id: Math.random().toString(36).substr(2, 9),
+            name,
+            quantity: 1,
+            price: 0
+        };
+        setItems([...items, newItem]);
     };
 
     const updateItem = (id: string, field: keyof OrderItem, value: string | number) => {
@@ -74,300 +127,458 @@ function Billing() {
         }
     };
 
-    const saveFrequentCustomer = (name: string) => {
-        if (name && !savedCustomers.includes(name)) {
-            setSavedCustomers([...savedCustomers, name]);
+    const handleAddCustomer = () => {
+        if (!newCustomer.name.trim()) {
+            showToast({
+                type: 'error',
+                title: '请填写客户姓名'
+            });
+            return;
         }
+
+        addCustomer(newCustomer);
+        setShowAddCustomer(false);
+        setNewCustomer({ name: '', phone: '', email: '' });
+        
+        showToast({
+            type: 'success',
+            title: '客户添加成功'
+        });
     };
 
     const totalAmount = items.reduce((sum, item) => sum + (item.quantity * item.price), 0);
 
     const handleConfirm = () => {
-        if (items.length === 0) return;
+        if (items.length === 0) {
+            showToast({
+                type: 'error',
+                title: '请添加商品'
+            });
+            return;
+        }
+
         const order = addOrder(items, selectedCustomer);
+        
+        // 更新客户支出
+        if (selectedCustomer) {
+            updateCustomerSpending(selectedCustomer, totalAmount);
+        }
+
         setLastOrder(order);
+        setShowSuccess(true);
         setItems([]);
         setSelectedCustomer('');
+        setCustomerQuery('');
+
+        showToast({
+            type: 'success',
+            title: '订单创建成功',
+            message: `订单金额: ¥${totalAmount.toLocaleString()}`
+        });
     };
 
     const handlePrint = () => {
         if (!lastOrder) return;
-        const customerName = customers.find(c => c.id === lastOrder.customerId)?.name || lastOrder.customerId || '匿名客户';
-        const receipt = `
-      账单详情
-      客户: ${customerName}
-      日期: ${new Date(lastOrder.date).toLocaleString()}
-      流水号: ${lastOrder.id}
-      ---------------------------
-      ${lastOrder.items.map((i: any) => `${i.name} x${i.quantity} @ ${i.price}`).join('\n')}
-      ---------------------------
-      总计: ¥${lastOrder.totalAmount}
-      
-      感谢您的光临！
-    `;
-        const win = window.open('', '', 'width=380,height=500');
-        win?.document.write(`
-            <html>
-                <body style="font-family: monospace; padding: 20px;">
-                    <pre style="white-space: pre-wrap;">${receipt}</pre>
-                </body>
-            </html>
-        `);
-        win?.document.close();
-        win?.print();
+
+        const printContent = `
+            <div style="font-family: monospace; width: 300px; margin: 0 auto;">
+                <div style="text-align: center; border-bottom: 1px dashed #000; padding-bottom: 10px; margin-bottom: 10px;">
+                    <h2>收据</h2>
+                    <p>订单号: ${lastOrder.id}</p>
+                    <p>时间: ${new Date(lastOrder.date).toLocaleString('zh-CN')}</p>
+                </div>
+                
+                ${selectedCustomerInfo ? `
+                    <div style="margin-bottom: 10px;">
+                        <p>客户: ${selectedCustomerInfo.name}</p>
+                        <p>电话: ${selectedCustomerInfo.phone}</p>
+                    </div>
+                ` : ''}
+                
+                <table style="width: 100%; border-collapse: collapse;">
+                    <thead>
+                        <tr style="border-bottom: 1px dashed #000;">
+                            <th style="text-align: left; padding: 5px;">商品</th>
+                            <th style="text-align: right; padding: 5px;">数量</th>
+                            <th style="text-align: right; padding: 5px;">单价</th>
+                            <th style="text-align: right; padding: 5px;">小计</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${lastOrder.items.map((item: OrderItem) => `
+                            <tr>
+                                <td style="padding: 3px;">${item.name}</td>
+                                <td style="text-align: right; padding: 3px;">${item.quantity}</td>
+                                <td style="text-align: right; padding: 3px;">¥${item.price}</td>
+                                <td style="text-align: right; padding: 3px;">¥${(item.quantity * item.price).toFixed(2)}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+                
+                <div style="border-top: 1px dashed #000; margin-top: 10px; padding-top: 10px; text-align: right;">
+                    <p><strong>总计: ¥${lastOrder.totalAmount.toFixed(2)}</strong></p>
+                </div>
+                
+                <div style="text-align: center; margin-top: 20px; font-size: 12px;">
+                    <p>谢谢惠顾！</p>
+                </div>
+            </div>
+        `;
+
+        const printWindow = window.open('', '_blank');
+        if (printWindow) {
+            printWindow.document.write(`
+                <html>
+                    <head>
+                        <title>打印收据</title>
+                        <style>
+                            @media print {
+                                body { margin: 0; }
+                                @page { margin: 10mm; }
+                            }
+                        </style>
+                    </head>
+                    <body>${printContent}</body>
+                </html>
+            `);
+            printWindow.document.close();
+            printWindow.print();
+        }
     };
 
     return (
-        <div className="space-y-6 max-w-4xl mx-auto animate-fade-in pb-12">
-            <div className="flex items-center justify-between">
-                <div>
-                    <h1 className="text-3xl font-bold bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">智能开单</h1>
-                    <p className="text-muted-foreground mt-1">支持图片 OCR 自动识别及便捷录入</p>
+        <div className="min-h-screen bg-background">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+                <div className="mb-8">
+                    <h1 className="text-2xl font-bold text-card-foreground mb-2">智能开单</h1>
+                    <p className="text-muted-foreground">上传图片自动识别商品，或手动添加订单项目</p>
                 </div>
-            </div>
 
-            {/* Customer & Upload Section */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                {/* Customer Select */}
-                <div className="md:col-span-1 bg-card border border-border rounded-2xl p-6 shadow-sm flex flex-col justify-between">
-                    <div>
-                        <label className="text-sm font-bold flex items-center gap-2 mb-4">
-                            <User size={18} className="text-primary" /> 选择客户
-                        </label>
-                        <div className="relative">
-                            <div
-                                onClick={() => setShowCustomerSearch(true)}
-                                className="flex items-center gap-2 bg-muted/50 border border-border rounded-xl px-4 py-3 cursor-pointer hover:border-primary/50 transition-all"
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                    {/* 客户选择 */}
+                    <div className="lg:col-span-1">
+                        <div className="bg-card rounded-lg border border-border p-6">
+                            <h2 className="text-lg font-semibold text-card-foreground mb-4 flex items-center gap-2">
+                                <User size={20} />
+                                选择客户
+                            </h2>
+                            
+                            <Dropdown
+                                trigger={
+                                    <div className="w-full p-3 border border-border rounded-lg cursor-pointer hover:bg-muted transition-colors">
+                                        <div className="flex items-center justify-between">
+                                            <div>
+                                                {selectedCustomerInfo ? (
+                                                    <div>
+                                                        <p className="font-medium text-card-foreground">{selectedCustomerInfo.name}</p>
+                                                        <p className="text-sm text-muted-foreground">{selectedCustomerInfo.phone}</p>
+                                                    </div>
+                                                ) : (
+                                                    <p className="text-muted-foreground">选择或搜索客户</p>
+                                                )}
+                                            </div>
+                                            <Search size={16} className="text-muted-foreground" />
+                                        </div>
+                                    </div>
+                                }
                             >
-                                <Search size={16} className="text-muted-foreground" />
-                                <span className={selectedCustomer ? 'text-foreground' : 'text-muted-foreground'}>
-                                    {customers.find(c => c.id === selectedCustomer)?.name || selectedCustomer || '选择或输入客户名'}
+                                <div className="p-2">
+                                    <input
+                                        type="text"
+                                        placeholder="搜索客户姓名或电话..."
+                                        value={customerQuery}
+                                        onChange={(e) => setCustomerQuery(e.target.value)}
+                                        className="w-full p-2 border border-border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                                        autoFocus
+                                    />
+                                </div>
+                                
+                                <div className="max-h-48 overflow-y-auto">
+                                    {filteredCustomers.length > 0 ? (
+                                        filteredCustomers.map(customer => (
+                                            <DropdownItem
+                                                key={customer.id}
+                                                onClick={() => {
+                                                    setSelectedCustomer(customer.id);
+                                                    setCustomerQuery('');
+                                                }}
+                                            >
+                                                <div>
+                                                    <p className="font-medium">{customer.name}</p>
+                                                    <p className="text-xs text-muted-foreground">{customer.phone}</p>
+                                                </div>
+                                            </DropdownItem>
+                                        ))
+                                    ) : customerQuery ? (
+                                        <div className="p-4 text-center">
+                                            <p className="text-sm text-muted-foreground mb-2">未找到客户</p>
+                                            <button
+                                                onClick={() => {
+                                                    setNewCustomer({ ...newCustomer, name: customerQuery });
+                                                    setShowAddCustomer(true);
+                                                }}
+                                                className="text-sm text-primary hover:underline"
+                                            >
+                                                添加新客户 "{customerQuery}"
+                                            </button>
+                                        </div>
+                                    ) : (
+                                        <div className="p-4 text-center">
+                                            <p className="text-sm text-muted-foreground">暂无客户</p>
+                                        </div>
+                                    )}
+                                </div>
+                                
+                                <div className="border-t border-border p-2">
+                                    <button
+                                        onClick={() => setShowAddCustomer(true)}
+                                        className="w-full p-2 text-sm text-primary hover:bg-muted rounded-md transition-colors"
+                                    >
+                                        + 添加新客户
+                                    </button>
+                                </div>
+                            </Dropdown>
+                        </div>
+                    </div>
+
+                    {/* 图片上传 */}
+                    <div className="lg:col-span-1">
+                        <div className="bg-card rounded-lg border border-border p-6">
+                            <h2 className="text-lg font-semibold text-card-foreground mb-4 flex items-center gap-2">
+                                <Upload size={20} />
+                                智能识别
+                            </h2>
+                            
+                            <div className="relative">
+                                <input
+                                    type="file"
+                                    accept="image/*"
+                                    onChange={handleFileUpload}
+                                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                                    disabled={isAnalyzing}
+                                />
+                                <div className={`
+                                    border-2 border-dashed border-border rounded-lg p-8 text-center
+                                    ${isAnalyzing ? 'bg-muted' : 'hover:bg-muted/50 transition-colors'}
+                                `}>
+                                    {isAnalyzing ? (
+                                        <LoadingSpinner text="AI识别中..." />
+                                    ) : (
+                                        <>
+                                            <Upload className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+                                            <p className="text-card-foreground font-medium mb-2">上传订单图片</p>
+                                            <p className="text-sm text-muted-foreground">
+                                                支持 JPG、PNG 格式<br />
+                                                AI将自动识别商品和价格
+                                            </p>
+                                        </>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* 订单明细 */}
+                    <div className="lg:col-span-1">
+                        <div className="bg-card rounded-lg border border-border p-6">
+                            <div className="flex items-center justify-between mb-4">
+                                <h2 className="text-lg font-semibold text-card-foreground">订单明细</h2>
+                                <span className="text-sm text-muted-foreground">
+                                    {items.length} 个商品
                                 </span>
                             </div>
 
-                            {showCustomerSearch && (
-                                <>
-                                    <div className="fixed inset-0 z-40" onClick={() => setShowCustomerSearch(false)}></div>
-                                    <div className="absolute top-full left-0 right-0 mt-2 bg-popover border border-border rounded-xl shadow-2xl z-50 max-h-60 overflow-y-auto animate-in zoom-in-95">
-                                        <div className="p-2 sticky top-0 bg-popover border-b border-border">
-                                            <input
-                                                autoFocus
-                                                type="text"
-                                                className="w-full bg-muted/50 border border-border rounded-lg px-3 py-2 text-sm outline-none focus:border-primary"
-                                                placeholder="搜索客户..."
-                                                value={customerQuery}
-                                                onChange={e => setCustomerQuery(e.target.value)}
-                                            />
-                                        </div>
-                                        <div className="p-1">
-                                            {filteredCustomers.length > 0 ? (
-                                                filteredCustomers.map(c => (
-                                                    <div
-                                                        key={c.id}
-                                                        onClick={() => { setSelectedCustomer(c.id); setShowCustomerSearch(false); }}
-                                                        className="px-4 py-3 hover:bg-muted rounded-lg cursor-pointer text-sm flex justify-between group"
-                                                    >
-                                                        <span>{c.name}</span>
-                                                        <span className="text-xs text-muted-foreground">{c.phone}</span>
-                                                    </div>
-                                                ))
-                                            ) : (
-                                                <div
-                                                    onClick={() => { setSelectedCustomer(customerQuery); setShowCustomerSearch(false); saveFrequentCustomer(customerQuery); }}
-                                                    className="px-4 py-3 text-sm text-primary hover:bg-primary/5 cursor-pointer font-medium"
-                                                >
-                                                    + 将 "{customerQuery}" 作为新客户
-                                                </div>
-                                            )}
-                                        </div>
-                                        {savedCustomers.length > 0 && (
-                                            <div className="border-t border-border p-2">
-                                                <p className="text-[10px] text-muted-foreground mb-1 px-2 uppercase font-bold">常用选择</p>
-                                                {savedCustomers.map(sc => (
-                                                    <div
-                                                        key={sc}
-                                                        onClick={() => { setSelectedCustomer(sc); setShowCustomerSearch(false); }}
-                                                        className="px-4 py-2 hover:bg-muted rounded-lg cursor-pointer text-sm"
-                                                    >
-                                                        {sc}
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        )}
+                            {/* 常用商品快捷按钮 */}
+                            {savedGoods.length > 0 && (
+                                <div className="mb-4">
+                                    <p className="text-sm text-muted-foreground mb-2">常用商品:</p>
+                                    <div className="flex flex-wrap gap-2">
+                                        {savedGoods.map(good => (
+                                            <button
+                                                key={good}
+                                                onClick={() => addItem(good)}
+                                                className="px-3 py-1 text-xs bg-muted hover:bg-muted/80 rounded-full transition-colors"
+                                            >
+                                                {good}
+                                            </button>
+                                        ))}
                                     </div>
-                                </>
+                                </div>
                             )}
-                        </div>
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-4 italic">
-                        * 可以在“客户管理”中录入详细资料
-                    </p>
-                </div>
 
-                {/* Upload Image */}
-                <div className="md:col-span-2 bg-card border-2 border-dashed border-border rounded-2xl p-6 transition-colors hover:border-primary/50 relative overflow-hidden group flex flex-col items-center justify-center text-center gap-4">
-                    <input
-                        type="file"
-                        accept="image/*"
-                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
-                        onChange={handleFileUpload}
-                        disabled={isAnalyzing}
-                    />
-                    <div className="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center text-primary group-hover:scale-110 transition-transform">
-                        {isAnalyzing ? <Loader2 className="animate-spin" size={28} /> : <Upload size={28} />}
-                    </div>
-                    <div>
-                        <h3 className="font-bold">上传订单图片</h3>
-                        <p className="text-sm text-muted-foreground mt-1">
-                            {isAnalyzing ? "正在识别内容..." : "拖拽或点击此处扫描"}
-                        </p>
+                            <button
+                                onClick={() => addItem()}
+                                className="w-full mb-4 p-3 border border-dashed border-border rounded-lg hover:bg-muted transition-colors flex items-center justify-center gap-2 text-muted-foreground"
+                            >
+                                <Plus size={16} />
+                                添加商品
+                            </button>
+
+                            {/* 商品列表 */}
+                            <div className="space-y-3 mb-6 max-h-96 overflow-y-auto">
+                                {items.map(item => (
+                                    <div key={item.id} className="p-3 bg-muted/50 rounded-lg">
+                                        <div className="grid grid-cols-12 gap-2 items-center">
+                                            <input
+                                                type="text"
+                                                placeholder="商品名称"
+                                                value={item.name}
+                                                onChange={(e) => updateItem(item.id, 'name', e.target.value)}
+                                                onBlur={() => saveFrequentGood(item.name)}
+                                                className="col-span-5 p-2 text-sm border border-border rounded focus:outline-none focus:ring-1 focus:ring-primary"
+                                            />
+                                            <input
+                                                type="number"
+                                                placeholder="数量"
+                                                value={item.quantity}
+                                                onChange={(e) => updateItem(item.id, 'quantity', Number(e.target.value))}
+                                                className="col-span-2 p-2 text-sm border border-border rounded focus:outline-none focus:ring-1 focus:ring-primary"
+                                                min="1"
+                                            />
+                                            <input
+                                                type="number"
+                                                placeholder="单价"
+                                                value={item.price}
+                                                onChange={(e) => updateItem(item.id, 'price', Number(e.target.value))}
+                                                className="col-span-3 p-2 text-sm border border-border rounded focus:outline-none focus:ring-1 focus:ring-primary"
+                                                min="0"
+                                                step="0.01"
+                                            />
+                                            <button
+                                                onClick={() => removeItem(item.id)}
+                                                className="col-span-2 p-2 text-red-500 hover:bg-red-50 rounded transition-colors"
+                                                title="删除商品"
+                                            >
+                                                <Trash2 size={14} />
+                                            </button>
+                                        </div>
+                                        <div className="mt-2 text-right">
+                                            <span className="text-sm text-muted-foreground">
+                                                小计: ¥{(item.quantity * item.price).toFixed(2)}
+                                            </span>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+
+                            {/* 总计和操作按钮 */}
+                            <div className="border-t border-border pt-4">
+                                <div className="flex justify-between items-center mb-4">
+                                    <span className="text-lg font-semibold text-card-foreground">总计:</span>
+                                    <span className="text-xl font-bold text-primary">
+                                        ¥{totalAmount.toFixed(2)}
+                                    </span>
+                                </div>
+                                
+                                <button
+                                    onClick={handleConfirm}
+                                    disabled={items.length === 0}
+                                    className="w-full bg-primary text-white py-3 rounded-lg font-medium hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                >
+                                    确认下单
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
 
-            {/* Order Items Table */}
-            <div className="bg-card border border-border rounded-2xl shadow-lg overflow-hidden flex flex-col">
-                <div className="p-6 border-b border-border flex items-center justify-between">
-                    <h2 className="text-xl font-bold flex items-center gap-2">
-                        单据明细 <span className="text-xs font-normal text-muted-foreground bg-muted px-2 py-0.5 rounded-full">{items.length} 项</span>
-                    </h2>
-                    <div className="flex gap-2">
-                        {savedGoods.length > 0 && (
-                            <div className="hidden sm:flex items-center gap-1">
-                                {savedGoods.slice(0, 3).map(good => (
-                                    <button
-                                        key={good}
-                                        onClick={() => addItem(good)}
-                                        className="text-[10px] bg-muted hover:bg-primary/10 hover:text-primary px-2 py-1 rounded-md border border-border transition-colors transition-colors"
-                                    >
-                                        + {good}
-                                    </button>
-                                ))}
-                            </div>
-                        )}
-                        <button onClick={() => addItem()} className="btn btn-primary btn-sm gap-1">
-                            <Plus size={14} /> 添加
+            {/* 添加客户模态框 */}
+            <Modal
+                isOpen={showAddCustomer}
+                onClose={() => setShowAddCustomer(false)}
+                title="添加新客户"
+            >
+                <div className="space-y-4">
+                    <div>
+                        <label htmlFor="customer-name" className="block text-sm font-medium text-card-foreground mb-1">
+                            客户姓名 *
+                        </label>
+                        <input
+                            id="customer-name"
+                            type="text"
+                            value={newCustomer.name}
+                            onChange={(e) => setNewCustomer({ ...newCustomer, name: e.target.value })}
+                            className="w-full p-3 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                            placeholder="请输入客户姓名"
+                            required
+                        />
+                    </div>
+                    <div>
+                        <label htmlFor="customer-phone" className="block text-sm font-medium text-card-foreground mb-1">
+                            联系电话
+                        </label>
+                        <input
+                            id="customer-phone"
+                            type="tel"
+                            value={newCustomer.phone}
+                            onChange={(e) => setNewCustomer({ ...newCustomer, phone: e.target.value })}
+                            className="w-full p-3 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                            placeholder="请输入联系电话"
+                        />
+                    </div>
+                    <div>
+                        <label htmlFor="customer-email" className="block text-sm font-medium text-card-foreground mb-1">
+                            邮箱地址
+                        </label>
+                        <input
+                            id="customer-email"
+                            type="email"
+                            value={newCustomer.email}
+                            onChange={(e) => setNewCustomer({ ...newCustomer, email: e.target.value })}
+                            className="w-full p-3 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                            placeholder="请输入邮箱地址"
+                        />
+                    </div>
+                    <div className="flex gap-3 pt-4">
+                        <button
+                            onClick={() => setShowAddCustomer(false)}
+                            className="flex-1 py-2 px-4 border border-border rounded-lg hover:bg-muted transition-colors"
+                        >
+                            取消
+                        </button>
+                        <button
+                            onClick={handleAddCustomer}
+                            className="flex-1 py-2 px-4 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors"
+                        >
+                            添加客户
                         </button>
                     </div>
                 </div>
+            </Modal>
 
-                <div className="p-6 overflow-x-auto">
-                    <table className="w-full min-w-[600px]">
-                        <thead>
-                            <tr className="text-xs text-muted-foreground text-left uppercase tracking-wider border-b border-border">
-                                <th className="pb-4 font-bold pl-2">#</th>
-                                <th className="pb-4 font-bold">货品/项目名</th>
-                                <th className="pb-4 font-bold text-center">数量</th>
-                                <th className="pb-4 font-bold text-right">单价 (¥)</th>
-                                <th className="pb-4 font-bold text-right pr-2">合计 (¥)</th>
-                                <th className="pb-4"></th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-border/50">
-                            {items.length === 0 && (
-                                <tr>
-                                    <td colSpan={6} className="py-12 text-center text-muted-foreground">
-                                        <History size={32} className="mx-auto mb-2 opacity-20" />
-                                        点击上方“添加”或上传图片开始录入
-                                    </td>
-                                </tr>
-                            )}
-                            {items.map((item, index) => (
-                                <tr key={item.id} className="group hover:bg-muted/30 transition-colors">
-                                    <td className="py-4 pl-2 text-sm text-muted-foreground font-medium">{index + 1}</td>
-                                    <td className="py-4">
-                                        <div className="flex items-center gap-2 mr-4">
-                                            <input
-                                                type="text"
-                                                className="w-full bg-transparent outline-none text-foreground font-medium focus:text-primary transition-colors"
-                                                value={item.name}
-                                                placeholder="项目名称..."
-                                                onChange={(e) => updateItem(item.id, 'name', e.target.value)}
-                                            />
-                                            <button
-                                                onClick={() => saveFrequentGood(item.name)}
-                                                className="opacity-0 group-hover:opacity-100 p-1 hover:text-primary transition-all rounded"
-                                                title="保存到常用列表"
-                                            >
-                                                <Save size={14} />
-                                            </button>
-                                        </div>
-                                    </td>
-                                    <td className="py-4 w-24">
-                                        <input
-                                            type="number"
-                                            className="w-full bg-muted/30 border border-border rounded-lg px-2 py-1.5 text-center text-sm outline-none focus:border-primary"
-                                            value={item.quantity}
-                                            onChange={(e) => updateItem(item.id, 'quantity', Number(e.target.value))}
-                                        />
-                                    </td>
-                                    <td className="py-4 w-32">
-                                        <input
-                                            type="number"
-                                            className="w-full bg-muted/30 border border-border rounded-lg px-2 py-1.5 text-right text-sm outline-none focus:border-primary"
-                                            value={item.price}
-                                            onChange={(e) => updateItem(item.id, 'price', Number(e.target.value))}
-                                        />
-                                    </td>
-                                    <td className="py-4 text-right font-bold pr-2 text-foreground">
-                                        {(item.quantity * item.price).toLocaleString()}
-                                    </td>
-                                    <td className="py-4 text-right">
-                                        <button onClick={() => removeItem(item.id)} className="p-2 text-muted-foreground hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-all">
-                                            <Trash2 size={16} />
-                                        </button>
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
-
-                <div className="bg-muted/30 p-8 border-t border-border mt-auto">
-                    <div className="flex flex-col md:flex-row items-center justify-between gap-6">
-                        <div className="flex items-center gap-10">
-                            <div>
-                                <p className="text-xs text-muted-foreground uppercase font-bold tracking-widest mb-1">Total Items</p>
-                                <p className="text-2xl font-bold">{items.length}</p>
-                            </div>
-                            <div>
-                                <p className="text-xs text-muted-foreground uppercase font-bold tracking-widest mb-1">Total Amount</p>
-                                <p className="text-3xl font-bold text-primary">¥ {totalAmount.toLocaleString()}</p>
-                            </div>
-                        </div>
-
-                        <div className="flex gap-3 w-full md:w-auto">
-                            <button className="flex-1 md:flex-none btn btn-ghost border border-border px-8">保存草稿</button>
-                            <button
-                                onClick={handleConfirm}
-                                disabled={items.length === 0}
-                                className="flex-1 md:flex-none btn btn-primary px-10 gap-2 shadow-xl shadow-primary/20 disabled:opacity-50"
-                            >
-                                <CheckCircle size={20} />
-                                确认下单并生成流水
-                            </button>
-                        </div>
+            {/* 成功提示模态框 */}
+            <Modal
+                isOpen={showSuccess}
+                onClose={() => setShowSuccess(false)}
+                title="订单创建成功"
+            >
+                <div className="text-center py-4">
+                    <CheckCircle className="w-16 h-16 text-green-500 mx-auto mb-4" />
+                    <p className="text-lg font-semibold text-card-foreground mb-2">
+                        订单已成功创建！
+                    </p>
+                    <p className="text-muted-foreground mb-6">
+                        订单金额: ¥{lastOrder?.totalAmount.toFixed(2)}
+                    </p>
+                    <div className="flex gap-3">
+                        <button
+                            onClick={() => setShowSuccess(false)}
+                            className="flex-1 py-2 px-4 border border-border rounded-lg hover:bg-muted transition-colors"
+                        >
+                            继续开单
+                        </button>
+                        <button
+                            onClick={handlePrint}
+                            className="flex-1 py-2 px-4 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors flex items-center justify-center gap-2"
+                        >
+                            <Printer size={16} />
+                            打印收据
+                        </button>
                     </div>
                 </div>
-            </div>
-
-            {/* Last Order Dialog */}
-            {lastOrder && (
-                <div className="bg-green-500/10 border border-green-500/50 p-6 rounded-2xl flex items-center justify-between animate-in slide-in-from-bottom-6 duration-300">
-                    <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 bg-green-500/20 text-green-500 rounded-full flex items-center justify-center">
-                            <CheckCircle size={24} />
-                        </div>
-                        <div>
-                            <h3 className="font-bold text-green-500">单据已成功入帐</h3>
-                            <p className="text-xs text-muted-foreground">流水 ID: {lastOrder.id} • 合计: ¥{lastOrder.totalAmount.toLocaleString()}</p>
-                        </div>
-                    </div>
-                    <button onClick={handlePrint} className="btn bg-green-500 hover:bg-green-600 text-white gap-2 h-12 px-6 shadow-lg shadow-green-500/20">
-                        <Printer size={18} /> 打印小票 / 凭证
-                    </button>
-                </div>
-            )}
+            </Modal>
         </div>
     );
 }

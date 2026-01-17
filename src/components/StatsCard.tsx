@@ -1,29 +1,68 @@
-import { type LucideIcon, ArrowUpRight, ArrowDownRight } from 'lucide-react';
+import { type ReactNode } from 'react';
+import { ArrowUpRight, ArrowDownRight, Minus } from 'lucide-react';
 
 interface StatsCardProps {
     title: string;
     value: string;
     trend: 'up' | 'down' | 'neutral';
     trendValue: string;
-    icon: LucideIcon;
     description: string;
+    icon?: ReactNode;
+    className?: string;
 }
 
-export function StatsCard({ title, value, trend, trendValue, icon: Icon, description }: StatsCardProps) {
+export default function StatsCard({ 
+    title, 
+    value, 
+    trend, 
+    trendValue, 
+    description, 
+    icon,
+    className = '' 
+}: StatsCardProps) {
+    const getTrendIcon = () => {
+        switch (trend) {
+            case 'up':
+                return <ArrowUpRight className="text-green-500" size={16} />;
+            case 'down':
+                return <ArrowDownRight className="text-red-500" size={16} />;
+            default:
+                return <Minus className="text-muted-foreground" size={16} />;
+        }
+    };
+
+    const getTrendColor = () => {
+        switch (trend) {
+            case 'up':
+                return 'text-green-500';
+            case 'down':
+                return 'text-red-500';
+            default:
+                return 'text-muted-foreground';
+        }
+    };
+
     return (
-        <div className="bg-card border border-border rounded-xl p-6 shadow-sm hover:shadow-md transition-shadow">
-            <div className="flex items-center justify-between">
+        <div className={`bg-card border border-border rounded-lg p-6 hover:shadow-lg hover:border-primary/20 transition-all duration-200 ${className}`}>
+            <div className="flex items-center justify-between mb-4">
                 <h3 className="text-sm font-medium text-muted-foreground">{title}</h3>
-                <Icon className="text-muted-foreground" size={18} />
+                {icon && (
+                    <div className="p-2 bg-primary/10 rounded-lg text-primary">
+                        {icon}
+                    </div>
+                )}
             </div>
-            <div className="mt-2 text-3xl font-bold">{value}</div>
-            <div className="mt-4 flex items-center text-xs">
-                {trend === 'up' && <ArrowUpRight className="text-green-500 mr-1" size={16} />}
-                {trend === 'down' && <ArrowDownRight className="text-red-500 mr-1" size={16} />}
-                <span className={trend === 'up' ? 'text-green-500' : trend === 'down' ? 'text-red-500' : 'text-muted-foreground'}>
+            
+            <div className="mb-4">
+                <div className="text-2xl font-bold text-card-foreground mb-1">{value}</div>
+            </div>
+            
+            <div className="flex items-center gap-2 text-sm">
+                {getTrendIcon()}
+                <span className={`font-medium ${getTrendColor()}`}>
                     {trendValue}
                 </span>
-                <span className="text-muted-foreground ml-1">{description}</span>
+                <span className="text-muted-foreground">{description}</span>
             </div>
         </div>
     );
