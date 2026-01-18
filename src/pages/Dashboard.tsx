@@ -1,25 +1,24 @@
-import { useState, useRef } from 'react';
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Bell, FileText, DollarSign, Share2, Store, TrendingUp, Users, CheckCircle, XCircle, Download } from 'lucide-react';
+import { Bell, FileText, Store, TrendingUp, Users } from 'lucide-react';
 import { useLocalStorage } from '../hooks/useLocalStorage';
 import html2canvas from 'html2canvas';
 
 function Dashboard() {
-    const [dateRange, setDateRange] = useState('今天00:00 至 今天23:59');
+    const [dateRange] = useState('今天00:00 至 今天23:59');
     const [showRepaymentModal, setShowRepaymentModal] = useState(false);
     const [selectedOrder, setSelectedOrder] = useState<any>(null);
-    const [orders, setOrders] = useLocalStorage('billing_orders', []);
+    const [orders, setOrders] = useLocalStorage<any[]>('billing_orders', []);
     const [showShareModal, setShowShareModal] = useState(false);
     const [selectedCustomer, setSelectedCustomer] = useState<any>(null);
     const [selectedOrders, setSelectedOrders] = useState<any[]>([]);
-    const [customers] = useLocalStorage('billing_customers', []);
+    const [customers] = useLocalStorage<any[]>('billing_customers', []);
     const [showProductModal, setShowProductModal] = useState(false);
-    const [products, setProducts] = useLocalStorage('billing_products', []);
+    const [products, setProducts] = useLocalStorage<any[]>('billing_products', []);
     const [selectedProduct, setSelectedProduct] = useState<any>(null);
     const [isGeneratingImage, setIsGeneratingImage] = useState(false);
     
-    // 订单元素的ref
-    const orderRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
+
 
     // 生成订单图片并分享
     const shareOrder = async (order: any) => {
@@ -91,7 +90,7 @@ function Dashboard() {
             downloadLink.click();
             
             // 检查是否支持Web Share API
-            if (navigator.share) {
+            if (typeof navigator.share === 'function') {
                 try {
                     // 由于Web Share API不支持直接分享图片URL，我们需要先下载图片
                     // 这里我们使用一个简单的提示，让用户手动分享下载的图片

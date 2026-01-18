@@ -7,7 +7,9 @@ interface DropdownProps {
   className?: string;
 }
 
-export default function Dropdown({ trigger, children, align = 'left', className = '' }: DropdownProps) {
+
+export default function Dropdown({ trigger, children, className = '' }: DropdownProps) {
+
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -88,7 +90,7 @@ interface DropdownItemProps {
   disabled?: boolean;
 }
 
-export function DropdownItem({ children, onClick, className = '', disabled = false }: DropdownItemProps) {
+export function DropdownItem({ children, onClick, disabled = false }: DropdownItemProps) {
   return (
     <div
       style={{

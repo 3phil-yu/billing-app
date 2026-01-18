@@ -1,13 +1,12 @@
 import { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { Upload, Plus, Trash2, CheckCircle, Printer, User, Search, Camera, FileText, Bell } from 'lucide-react';
+import { Plus, Trash2, CheckCircle, Printer, User, Search, Camera, FileText, Bell } from 'lucide-react';
 import { analyzeImageWithDeepSeek } from '../services/openai';
 import { useOrders, type OrderItem } from '../hooks/useOrders';
 import { useCustomers } from '../hooks/useCustomers';
 import { useLocalStorage } from '../hooks/useLocalStorage';
 import Modal from '../components/ui/Modal';
 import Dropdown, { DropdownItem } from '../components/ui/Dropdown';
-import LoadingSpinner from '../components/ui/LoadingSpinner';
 import { useToast } from '../components/ui/Toast';
 
 function Billing() {
@@ -21,11 +20,10 @@ function Billing() {
     const [savedGoods, setSavedGoods] = useLocalStorage<string[]>('billing_frequent_goods', ['四川西兰', '湖北红油菜']);
     
     // 商品列表
-    const [products, setProducts] = useLocalStorage<any[]>('billing_products', []);
+    const [products] = useLocalStorage<any[]>('billing_products', []);
 
     // 状态管理
     const [items, setItems] = useState<OrderItem[]>([]);
-    const [isAnalyzing, setIsAnalyzing] = useState(false);
     const [lastOrder, setLastOrder] = useState<{
         id: string;
         date: string;
@@ -54,16 +52,17 @@ function Billing() {
         return customers.filter(c =>
             c.name.toLowerCase().includes(query) || 
             c.phone.includes(query) ||
-            c.email.toLowerCase().includes(query)
+            (c.email && c.email.toLowerCase().includes(query))
         );
     }, [customers, customerQuery]);
 
     // 选中的客户信息
-    const selectedCustomerInfo = customers.find(c => c.id === selectedCustomer);
+    const selectedCustomerInfo = customers.find(c => c.id === selectedCustomer) as any;
 
     // 处理文件上传
-    const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
+    const handleFileUpload = async (e: Event) => {
+        const target = e.target as HTMLInputElement;
+        const file = target.files?.[0];
         if (!file) return;
 
         if (!apiKey) {
@@ -75,7 +74,6 @@ function Billing() {
             return;
         }
 
-        setIsAnalyzing(true);
         try {
             const resultJson = await analyzeImageWithDeepSeek(file, apiKey, recognitionPrompt);
             const result = JSON.parse(resultJson);
@@ -109,7 +107,7 @@ function Billing() {
                 message: error instanceof Error ? error.message : '请检查API密钥或网络连接'
             });
         } finally {
-            setIsAnalyzing(false);
+
         }
     };
     // 添加商品
@@ -167,7 +165,7 @@ function Billing() {
     };
     // 计算总金额
     const totalAmount = items.reduce((sum, item) => {
-        const price = item.price === '' ? 0 : item.price;
+        const price = item.price || 0;
         return sum + (item.quantity * price);
     }, 0);
     // 确认下单
@@ -209,7 +207,7 @@ function Billing() {
                 });
                 return;
             }
-            const price = item.price === '' ? 0 : item.price;
+            const price = item.price || 0;
             if (!price || price < 0) {
                 showToast({
                     type: 'error',
@@ -422,8 +420,11 @@ function Billing() {
                             gap: '0.25rem',
                             transition: 'all 0.2s'
                         }}
-                        onHover={(e) => {
-                            e.target.style.backgroundColor = 'rgba(255, 255, 255, 0.3)';
+                        onMouseOver={(e: React.MouseEvent<HTMLButtonElement>) => {
+                            (e.target as HTMLElement).style.backgroundColor = 'rgba(255, 255, 255, 0.3)';
+                        }}
+                        onMouseOut={(e: React.MouseEvent<HTMLButtonElement>) => {
+                            (e.target as HTMLElement).style.backgroundColor = '';
                         }}
                     >
                         <Camera size={24} />
@@ -647,7 +648,8 @@ function Billing() {
                                             borderRadius: '0.5rem',
                                             transition: 'all 0.2s'
                                         }}
-                                        onHover={(e) => e.target.style.backgroundColor = '#eff6ff'}
+                                        onMouseOver={(e: React.MouseEvent<HTMLButtonElement>) => (e.target as HTMLElement).style.backgroundColor = '#eff6ff'}
+                                        onMouseOut={(e: React.MouseEvent<HTMLButtonElement>) => (e.target as HTMLElement).style.backgroundColor = 'transparent'}
                                     >
                                         + 添加新客户
                                     </button>
@@ -711,7 +713,8 @@ function Billing() {
                                                 cursor: 'pointer',
                                                 transition: 'all 0.2s'
                                             }}
-                                            onHover={(e) => e.target.style.backgroundColor = '#e5e7eb'}
+                                            onMouseOver={(e: React.MouseEvent<HTMLButtonElement>) => (e.target as HTMLElement).style.backgroundColor = '#e5e7eb'}
+                                            onMouseOut={(e: React.MouseEvent<HTMLButtonElement>) => (e.target as HTMLElement).style.backgroundColor = '#f3f4f6'}
                                         >
                                             {good}
                                         </button>
@@ -739,9 +742,13 @@ function Billing() {
                                 marginBottom: '1rem',
                                 transition: 'all 0.2s'
                             }}
-                            onHover={(e) => {
-                                e.target.style.borderColor = '#3b82f6';
-                                e.target.style.color = '#3b82f6';
+                            onMouseOver={(e: React.MouseEvent<HTMLButtonElement>) => {
+                                (e.target as HTMLElement).style.borderColor = '#3b82f6';
+                                (e.target as HTMLElement).style.color = '#3b82f6';
+                            }}
+                            onMouseOut={(e: React.MouseEvent<HTMLButtonElement>) => {
+                                (e.target as HTMLElement).style.borderColor = '#e5e7eb';
+                                (e.target as HTMLElement).style.color = '#6b7280';
                             }}
                         >
                             <Plus size={16} />
@@ -850,7 +857,7 @@ function Billing() {
                                         <input
                                             type="number"
                                             placeholder="单价"
-                                            value={item.price === '' ? '' : item.price}
+                                            value={item.price}
                                             onChange={(e) => {
                                                 const value = e.target.value;
                                                 updateItem(item.id, 'price', value === '' ? '' : Number(value));
@@ -882,8 +889,11 @@ function Billing() {
                                                 alignItems: 'center',
                                                 justifyContent: 'center'
                                             }}
-                                            onHover={(e) => {
-                                                e.target.style.backgroundColor = '#fecaca';
+                                            onMouseOver={(e: React.MouseEvent<HTMLButtonElement>) => {
+                                                (e.target as HTMLElement).style.backgroundColor = '#fecaca';
+                                            }}
+                                            onMouseOut={(e: React.MouseEvent<HTMLButtonElement>) => {
+                                                (e.target as HTMLElement).style.backgroundColor = '#fee2e2';
                                             }}
                                         >
                                             <Trash2 size={16} />
@@ -1055,7 +1065,8 @@ function Billing() {
                                 cursor: 'pointer',
                                 transition: 'all 0.2s'
                             }}
-                            onHover={(e) => e.target.style.backgroundColor = '#f9fafb'}
+                            onMouseOver={(e) => (e.target as HTMLElement).style.backgroundColor = '#f9fafb'}
+                            onMouseOut={(e) => (e.target as HTMLElement).style.backgroundColor = '#ffffff'}
                         >
                             取消
                         </button>
@@ -1073,7 +1084,8 @@ function Billing() {
                                 cursor: 'pointer',
                                 transition: 'all 0.2s'
                             }}
-                            onHover={(e) => e.target.style.opacity = '0.9'}
+                            onMouseOver={(e) => (e.target as HTMLElement).style.opacity = '0.9'}
+                            onMouseOut={(e) => (e.target as HTMLElement).style.opacity = '1'}
                         >
                             添加客户
                         </button>
@@ -1125,7 +1137,8 @@ function Billing() {
                                 cursor: 'pointer',
                                 transition: 'all 0.2s'
                             }}
-                            onHover={(e) => e.target.style.backgroundColor = '#f9fafb'}
+                            onMouseOver={(e) => (e.target as HTMLElement).style.backgroundColor = '#f9fafb'}
+                            onMouseOut={(e) => (e.target as HTMLElement).style.backgroundColor = '#ffffff'}
                         >
                             继续开单
                         </button>
@@ -1147,7 +1160,8 @@ function Billing() {
                                 gap: '0.5rem',
                                 transition: 'all 0.2s'
                             }}
-                            onHover={(e) => e.target.style.opacity = '0.9'}
+                            onMouseOver={(e) => (e.target as HTMLElement).style.opacity = '0.9'}
+                            onMouseOut={(e) => (e.target as HTMLElement).style.opacity = '1'}
                         >
                             <Printer size={16} />
                             打印收据

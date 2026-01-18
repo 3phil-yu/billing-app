@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { TrendingUp, FileText, DollarSign, BarChart3, Users, Share2, CheckCircle, XCircle } from 'lucide-react';
+import { FileText, BarChart3, Users, Share2, CheckCircle, XCircle } from 'lucide-react';
 import { useOrders } from '../hooks/useOrders';
 import { useCustomers } from '../hooks/useCustomers';
 
@@ -29,7 +29,7 @@ function Analysis() {
     };
 
     // 分享订单
-    const shareOrder = (order: any) => {
+    const shareOrder = (_order: any) => {
         // 模拟分享功能
         alert('订单分享功能已触发');
     };
@@ -360,7 +360,8 @@ function Analysis() {
                                                 gridTemplateColumns: '2fr 1fr 1fr 1fr',
                                                 gap: '0.5rem',
                                                 alignItems: 'center',
-                                                paddingVertical: '0.25rem'
+                                                paddingTop: '0.25rem',
+                                                paddingBottom: '0.25rem'
                                             }}>
                                                 <p style={{
                                                     fontSize: '0.875rem',

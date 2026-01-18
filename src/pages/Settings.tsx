@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Save, Trash2, Key, AlertTriangle, Eye, EyeOff, CheckCircle, Settings as SettingsIcon, User, FileText } from 'lucide-react';
+import { Save, Trash2, Key, AlertTriangle, Eye, EyeOff, CheckCircle, User, FileText } from 'lucide-react';
 import { useLocalStorage } from '../hooks/useLocalStorage';
 import { useToast } from '../components/ui/Toast';
 import Modal from '../components/ui/Modal';
@@ -220,7 +220,8 @@ export default function Settings() {
                                                 cursor: 'pointer',
                                                 transition: 'all 0.2s'
                                             }}
-                                            onHover={(e) => e.target.style.backgroundColor = '#f3f4f6'}
+                                            onMouseOver={(e: React.MouseEvent<HTMLButtonElement>) => (e.target as HTMLElement).style.backgroundColor = '#f3f4f6'}
+                                            onMouseOut={(e: React.MouseEvent<HTMLButtonElement>) => (e.target as HTMLElement).style.backgroundColor = 'transparent'}
                                         >
                                             {showApiKey ? <EyeOff size={16} style={{ color: '#6b7280' }} /> : <Eye size={16} style={{ color: '#6b7280' }} />}
                                         </button>
@@ -283,7 +284,8 @@ export default function Settings() {
                                     boxShadow: '0 4px 12px rgba(99, 102, 241, 0.3)',
                                     transition: 'all 0.2s'
                                 }}
-                                onHover={(e) => e.target.style.opacity = '0.9'}
+                                onMouseOver={(e: React.MouseEvent<HTMLButtonElement>) => (e.target as HTMLElement).style.opacity = '0.9'}
+                                onMouseOut={(e: React.MouseEvent<HTMLButtonElement>) => (e.target as HTMLElement).style.opacity = '1'}
                             >
                                 <Save size={16} />
                                 保存配置
@@ -532,7 +534,8 @@ export default function Settings() {
                                         boxShadow: '0 4px 12px rgba(239, 68, 68, 0.3)',
                                         transition: 'all 0.2s'
                                     }}
-                                    onHover={(e) => e.target.style.opacity = '0.9'}
+                                    onMouseOver={(e) => (e.target as HTMLElement).style.opacity = '0.9'}
+                                    onMouseOut={(e) => (e.target as HTMLElement).style.opacity = '1'}
                                 >
                                     <Trash2 size={14} />
                                     重置数据
@@ -587,7 +590,8 @@ export default function Settings() {
                                 cursor: 'pointer',
                                 transition: 'all 0.2s'
                             }}
-                            onHover={(e) => e.target.style.backgroundColor = '#f9fafb'}
+                            onMouseOver={(e) => (e.target as HTMLElement).style.backgroundColor = '#f9fafb'}
+                            onMouseOut={(e) => (e.target as HTMLElement).style.backgroundColor = '#ffffff'}
                         >
                             取消
                         </button>
@@ -605,7 +609,8 @@ export default function Settings() {
                                 cursor: 'pointer',
                                 transition: 'all 0.2s'
                             }}
-                            onHover={(e) => e.target.style.opacity = '0.9'}
+                            onMouseOver={(e) => (e.target as HTMLElement).style.opacity = '0.9'}
+                            onMouseOut={(e) => (e.target as HTMLElement).style.opacity = '1'}
                         >
                             确认重置
                         </button>

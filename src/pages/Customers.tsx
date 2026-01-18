@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useCustomers } from '../hooks/useCustomers';
-import { Search, Plus, Phone, Mail, User, Calendar, DollarSign, Edit, Trash2, Eye, EyeOff } from 'lucide-react';
+import { Search, Plus, Phone, Mail, User, Calendar, Edit, Trash2, Eye, EyeOff } from 'lucide-react';
 import Modal from '../components/ui/Modal';
 import { useToast } from '../components/ui/Toast';
 
@@ -15,8 +15,8 @@ export default function Customers() {
 
     const filteredCustomers = customers.filter(c =>
         c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        c.phone.includes(searchTerm) ||
-        c.email.toLowerCase().includes(searchTerm.toLowerCase())
+        c.phone.includes(searchTerm.toLowerCase()) ||
+        (c.email && c.email.toLowerCase().includes(searchTerm.toLowerCase()))
     );
 
     const validateForm = () => {
