@@ -4,14 +4,14 @@ import { VitePWA } from 'vite-plugin-pwa'
 
 // https://vite.dev/config/
 export default defineConfig({
-  base: '/',
+  base: process.env.NODE_ENV === 'production' ? '/billing-app/' : '/',
   plugins: [
     react(),
     VitePWA({
       registerType: 'autoUpdate',
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
-        navigateFallback: '/index.html',
+        navigateFallback: process.env.NODE_ENV === 'production' ? '/billing-app/index.html' : '/index.html',
         navigateFallbackDenylist: [/^\/_/, /\/[^/?]+\.[^/]+$/],
         runtimeCaching: [
           {
@@ -47,23 +47,23 @@ export default defineConfig({
         background_color: '#0f172a',
         display: 'standalone',
         orientation: 'portrait-primary',
-        scope: '/',
-        start_url: '/',
+        scope: process.env.NODE_ENV === 'production' ? '/billing-app/' : '/',
+        start_url: process.env.NODE_ENV === 'production' ? '/billing-app/' : '/',
         categories: ['business', 'finance', 'productivity'],
         lang: 'zh-CN',
         icons: [
           {
-            src: '/icon-192.png',
+            src: process.env.NODE_ENV === 'production' ? '/billing-app/icon-192.png' : '/icon-192.png',
             sizes: '192x192',
             type: 'image/png'
           },
           {
-            src: '/icon-512.png',
+            src: process.env.NODE_ENV === 'production' ? '/billing-app/icon-512.png' : '/icon-512.png',
             sizes: '512x512',
             type: 'image/png'
           },
           {
-            src: '/icon-512.png',
+            src: process.env.NODE_ENV === 'production' ? '/billing-app/icon-512.png' : '/icon-512.png',
             sizes: '512x512',
             type: 'image/png',
             purpose: 'any maskable'
@@ -71,14 +71,14 @@ export default defineConfig({
         ],
         screenshots: [
           {
-            src: '/billing-app/icon-512.png',
+            src: process.env.NODE_ENV === 'production' ? '/billing-app/icon-512.png' : '/icon-512.png',
             sizes: '512x512',
             type: 'image/png',
             form_factor: 'narrow',
             label: '智能开单系统主界面'
           },
           {
-            src: '/billing-app/icon-512.png',
+            src: process.env.NODE_ENV === 'production' ? '/billing-app/icon-512.png' : '/icon-512.png',
             sizes: '512x512',
             type: 'image/png',
             form_factor: 'wide',
@@ -90,22 +90,22 @@ export default defineConfig({
             name: '快速开单',
             short_name: '开单',
             description: '立即创建新订单',
-            url: '/billing',
-            icons: [{ src: '/icon-192.png', sizes: '192x192' }]
+            url: process.env.NODE_ENV === 'production' ? '/billing-app/billing' : '/billing',
+            icons: [{ src: process.env.NODE_ENV === 'production' ? '/billing-app/icon-192.png' : '/icon-192.png', sizes: '192x192' }]
           },
           {
             name: '查看控制台',
             short_name: '控制台',
             description: '查看销售统计',
-            url: '/',
-            icons: [{ src: '/icon-192.png', sizes: '192x192' }]
+            url: process.env.NODE_ENV === 'production' ? '/billing-app/' : '/',
+            icons: [{ src: process.env.NODE_ENV === 'production' ? '/billing-app/icon-192.png' : '/icon-192.png', sizes: '192x192' }]
           },
           {
             name: '客户管理',
             short_name: '客户',
             description: '管理客户信息',
-            url: '/customers',
-            icons: [{ src: '/icon-192.png', sizes: '192x192' }]
+            url: process.env.NODE_ENV === 'production' ? '/billing-app/customers' : '/customers',
+            icons: [{ src: process.env.NODE_ENV === 'production' ? '/billing-app/icon-192.png' : '/icon-192.png', sizes: '192x192' }]
           }
         ],
         related_applications: [],
