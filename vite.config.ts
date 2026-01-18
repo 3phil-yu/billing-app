@@ -11,7 +11,7 @@ export default defineConfig({
       registerType: 'autoUpdate',
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
-        navigateFallback: 'index.html',
+        navigateFallback: '/index.html',
         navigateFallbackDenylist: [/^\/_/, /\/[^/?]+\.[^/]+$/],
         runtimeCaching: [
           {
@@ -46,24 +46,24 @@ export default defineConfig({
         theme_color: '#7c3aed',
         background_color: '#0f172a',
         display: 'standalone',
-        orientation: 'portrait',
+        orientation: 'portrait-primary',
         scope: '/',
         start_url: '/',
         categories: ['business', 'finance', 'productivity'],
         lang: 'zh-CN',
         icons: [
           {
-            src: 'icon-192.png',
+            src: '/icon-192.png',
             sizes: '192x192',
             type: 'image/png'
           },
           {
-            src: 'icon-512.png',
+            src: '/icon-512.png',
             sizes: '512x512',
             type: 'image/png'
           },
           {
-            src: 'icon-512.png',
+            src: '/icon-512.png',
             sizes: '512x512',
             type: 'image/png',
             purpose: 'any maskable'
@@ -71,10 +71,18 @@ export default defineConfig({
         ],
         screenshots: [
           {
-            src: 'icon-512.png',
+            src: '/billing-app/icon-512.png',
             sizes: '512x512',
             type: 'image/png',
-            form_factor: 'narrow'
+            form_factor: 'narrow',
+            label: '智能开单系统主界面'
+          },
+          {
+            src: '/billing-app/icon-512.png',
+            sizes: '512x512',
+            type: 'image/png',
+            form_factor: 'wide',
+            label: '桌面版智能开单系统'
           }
         ],
         shortcuts: [
@@ -83,16 +91,25 @@ export default defineConfig({
             short_name: '开单',
             description: '立即创建新订单',
             url: '/billing',
-            icons: [{ src: 'icon-192.png', sizes: '192x192' }]
+            icons: [{ src: '/icon-192.png', sizes: '192x192' }]
           },
           {
             name: '查看控制台',
             short_name: '控制台',
             description: '查看销售统计',
             url: '/',
-            icons: [{ src: 'icon-192.png', sizes: '192x192' }]
+            icons: [{ src: '/icon-192.png', sizes: '192x192' }]
+          },
+          {
+            name: '客户管理',
+            short_name: '客户',
+            description: '管理客户信息',
+            url: '/customers',
+            icons: [{ src: '/icon-192.png', sizes: '192x192' }]
           }
-        ]
+        ],
+        related_applications: [],
+        prefer_related_applications: false
       },
       devOptions: {
         enabled: true
@@ -100,9 +117,15 @@ export default defineConfig({
     })
   ],
   server: {
-    host: true,
-    port: 5173,
-    open: true, // 自动打开浏览器
+    host: '0.0.0.0',
+    port: 8080,
+    open: true,
+    cors: true
+  },
+  preview: {
+    host: '0.0.0.0',
+    port: 8080,
+    open: true,
     cors: true
   },
   build: {

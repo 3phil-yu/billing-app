@@ -10,7 +10,7 @@ import { ToastProvider } from './components/ui/Toast';
 function App() {
   return (
     <ToastProvider>
-      <BrowserRouter basename="/billing-app">
+      <BrowserRouter basename="/">
         <Routes>
           <Route path="/" element={<Layout />}>
             <Route index element={<Dashboard />} />
