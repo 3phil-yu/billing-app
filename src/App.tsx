@@ -10,7 +10,7 @@ import { ToastProvider } from './components/ui/Toast';
 function App() {
   return (
     <ToastProvider>
-      <BrowserRouter basename={process.env.NODE_ENV === 'production' ? '/billing-app' : '/'}>
+      <BrowserRouter basename={import.meta.env.PROD ? '/billing-app' : '/'}>
         <Routes>
           <Route path="/" element={<Layout />}>
             <Route index element={<Dashboard />} />
