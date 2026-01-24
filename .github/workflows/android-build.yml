@@ -46,8 +46,9 @@ jobs:
         working-directory: ./android
         run: chmod +x ./gradlew
       
-      - name: Build Android APK using Capacitor CLI
-        run: npx cap build android --debug --no-open
+      - name: Build Android APK using gradlew directly
+        working-directory: ./android
+        run: ./gradlew assembleDebug
       
       - name: Upload APK to GitHub Releases
         uses: softprops/action-gh-release@v2
