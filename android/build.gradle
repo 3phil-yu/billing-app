@@ -22,6 +22,12 @@ allprojects {
         google()
         mavenCentral()
     }
+    
+    // Set Java compatibility version to 17 (GitHub Actions uses Java 17)
+    tasks.withType(JavaCompile) {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
 }
 
 task clean(type: Delete) {
