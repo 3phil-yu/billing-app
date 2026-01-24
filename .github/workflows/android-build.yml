@@ -46,9 +46,9 @@ jobs:
         working-directory: ./android
         run: chmod +x ./gradlew
       
-      - name: Build Android APK
+      - name: Build Android APK with debug logs
         working-directory: ./android
-        run: ./gradlew assembleDebug
+        run: ./gradlew assembleDebug --stacktrace
       
       - name: Upload APK to GitHub Releases
         uses: softprops/action-gh-release@v2
